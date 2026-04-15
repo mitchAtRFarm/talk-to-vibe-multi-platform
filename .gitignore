@@ -9,7 +9,7 @@ __pycache__/
 *.egg-info/
 
 # macOS
-.D_Store
+.DS_Store
 
 # IDE
 .vscode/
@@ -17,6 +17,15 @@ __pycache__/
 
 # Archives
 *.zip
+
+# Secrets / credentials
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.p12
+*.keychain-db
 
 # Config (contains API keys)
 # Note: actual config is at ~/.talktovibe/config.yaml, not in repo

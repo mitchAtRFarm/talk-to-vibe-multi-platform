@@ -25,6 +25,11 @@ class TestOpenAICompatibleProvider:
         p = OpenAICompatibleProvider(base_url="http://localhost:8000/v1", api_key="", model="whisper-1")
         assert p.client.api_key == "not-needed"
 
+    def test_api_key_default_fallback_logs_warning(self, caplog):
+        with caplog.at_level("WARNING"):
+            OpenAICompatibleProvider(base_url="http://localhost:8000/v1", api_key="", model="whisper-1")
+        assert "No API key configured for OpenAI-Compatible provider" in caplog.text
+
     def test_transcribe_calls_sdk(self, monkeypatch):
         audio = np.zeros((16000, 1), dtype=np.int16)
         p = OpenAICompatibleProvider(base_url="http://localhost:8000/v1", api_key="testkey", model="whisper-1")
