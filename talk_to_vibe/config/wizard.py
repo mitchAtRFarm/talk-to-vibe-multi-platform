@@ -116,7 +116,29 @@ def _configure_ptt_key(config: AppConfig) -> None:
     platform = get_platform()
     key_map = platform.get_key_map()
     key_display = platform.get_key_display_names()
-    key_list = list(key_map.keys())
+    recommended_keys = [
+        key for key in (
+            platform.get_default_ptt_key(),
+            "ctrl+1",
+            "ctrl+2",
+            "ctrl+3",
+            "ctrl+4",
+            "ctrl+5",
+            "ctrl+8",
+            "f19",
+            "f20",
+            "f18",
+            "f9",
+            "f10",
+            "f11",
+            "f12",
+        )
+        if key in key_map
+    ]
+    key_list = []
+    for key in recommended_keys + list(key_map.keys()):
+        if key not in key_list:
+            key_list.append(key)
 
     print("\n🎹 Push-to-Talk Key Setup\n")
     current_key = config.ptt_key
@@ -159,8 +181,8 @@ def _configure_ptt_key(config: AppConfig) -> None:
 
 def _warn_if_modifier_only(platform, chord_str: str) -> None:
     if platform.is_modifier_only(chord_str):
-        print("   ⚠️  Warning: modifier-only keys can conflict with system shortcuts.")
-        print("      Consider using an F-key (F18/F19/F20) or adding a chord like ctrl+f18.")
+        print("   ⚠️  Warning: modifier-only keys are unreliable on macOS global event taps.")
+        print("      Prefer Control + number chords like ctrl+9, or F18/F19/F20 on full keyboards.")
 
 
 def _configure_auto_enter(config: AppConfig) -> None:

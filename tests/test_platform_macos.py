@@ -8,15 +8,89 @@ from talk_to_vibe.errors import PlatformNotSupportedError, PlatformError
 
 
 class TestMacOSPlatform:
+    def test_has_global_key_access(self):
+        p = MacOSPlatform()
+        with patch.object(MacOSPlatform, "has_accessibility_access", return_value=True), \
+             patch.object(MacOSPlatform, "has_listen_event_access", return_value=True):
+            assert p.has_global_key_access() is True
+
+    def test_get_global_key_access_status(self):
+        p = MacOSPlatform()
+        with patch.object(MacOSPlatform, "has_accessibility_access", return_value=True), \
+             patch.object(MacOSPlatform, "has_listen_event_access", return_value=False):
+            assert p.get_global_key_access_status() == {
+                "accessibility": True,
+                "listen_event": False,
+            }
+
+    def test_request_global_key_access(self):
+        p = MacOSPlatform()
+        with patch("Quartz.CGRequestListenEventAccess", return_value=True), \
+             patch.object(MacOSPlatform, "request_accessibility_access", return_value=True):
+            assert p.request_global_key_access() is True
+
+    def test_has_accessibility_access(self):
+        p = MacOSPlatform()
+        fake_bundle = object()
+        functions = {"AXIsProcessTrusted": lambda: True}
+        with patch("objc.loadBundle", return_value=fake_bundle), \
+             patch("objc.loadBundleFunctions", side_effect=lambda bundle, namespace, descriptors: namespace.update(functions)):
+            assert p.has_accessibility_access() is True
+
+    def test_request_accessibility_access(self):
+        p = MacOSPlatform()
+        fake_bundle = object()
+        captured = {}
+
+        def load_functions(bundle, namespace, descriptors):
+            namespace.update({"AXIsProcessTrustedWithOptions": lambda options: captured.setdefault("options", options) or True})
+
+        with patch("objc.loadBundle", return_value=fake_bundle), \
+             patch("objc.loadBundleFunctions", side_effect=load_functions):
+            assert p.request_accessibility_access() is True
+        assert captured["options"]["AXTrustedCheckOptionPrompt"] is True
+
     def test_get_key_map_has_expected_keys(self):
         p = MacOSPlatform()
         key_map = p.get_key_map()
+        assert "1" in key_map
+        assert "f18" in key_map
+        assert "f9" in key_map
         assert "alt_r" in key_map
         assert "alt_l" in key_map
         assert "cmd_r" in key_map
         assert "ctrl_r" in key_map
         assert "ctrl_l" in key_map
         assert "shift_r" in key_map
+
+    def test_normalize_listener_key_maps_side_specific_modifiers_to_generic(self):
+        p = MacOSPlatform()
+        from pynput import keyboard
+
+        assert p.normalize_listener_key(keyboard.Key.alt_l) == keyboard.Key.alt
+        assert p.normalize_listener_key(keyboard.Key.alt_r) == keyboard.Key.alt
+        assert p.normalize_listener_key(keyboard.Key.cmd_l) == keyboard.Key.cmd
+
+    def test_normalize_listener_key_maps_characters_to_stable_vk_keycodes(self):
+        p = MacOSPlatform()
+        from pynput import keyboard
+
+        assert p.normalize_listener_key(keyboard.KeyCode.from_char("1", vk=18)) == keyboard.KeyCode.from_vk(18)
+        assert p.normalize_listener_key(keyboard.KeyCode.from_char("!", vk=18)) == keyboard.KeyCode.from_vk(18)
+
+    def test_describe_listener_key_shows_normalization(self):
+        p = MacOSPlatform()
+        from pynput import keyboard
+
+        description = p.describe_listener_key(keyboard.Key.alt_l)
+        assert "alt" in description
+
+    def test_build_listener_kwargs_adds_darwin_intercept(self):
+        p = MacOSPlatform()
+        logger = MagicMock()
+        kwargs = p.build_listener_kwargs(logger)
+        assert "darwin_intercept" in kwargs
+        assert callable(kwargs["darwin_intercept"])
 
     def test_get_key_display_names(self):
         p = MacOSPlatform()
@@ -26,14 +100,29 @@ class TestMacOSPlatform:
 
     def test_default_ptt_key(self):
         p = MacOSPlatform()
-        assert p.get_default_ptt_key() == "alt_r"
+        assert p.get_default_ptt_key() == "ctrl+9"
 
     def test_permission_help(self):
         p = MacOSPlatform()
         help_lines = p.get_permission_help()
-        assert len(help_lines) >= 2
+        assert len(help_lines) >= 3
+        assert any("Input Monitoring" in line for line in help_lines)
         assert any("Accessibility" in line for line in help_lines)
         assert any("Microphone" in line for line in help_lines)
+
+    def test_global_key_permission_help(self):
+        p = MacOSPlatform()
+        help_lines = p.get_global_key_permission_help()
+        assert len(help_lines) == 2
+        assert any("Input Monitoring" in line for line in help_lines)
+        assert any("Accessibility" in line for line in help_lines)
+        assert not any("Microphone" in line for line in help_lines)
+
+    def test_microphone_permission_help(self):
+        p = MacOSPlatform()
+        help_lines = p.get_microphone_permission_help()
+        assert len(help_lines) == 1
+        assert "Microphone" in help_lines[0]
 
     def test_paste_text_calls_pbcopy(self):
         p = MacOSPlatform()
@@ -74,6 +163,12 @@ class TestMacOSParsePttChord:
         result = p.parse_ptt_chord("ctrl+shift_l+alt_r")
         key_map = p.get_key_map()
         assert result == frozenset({key_map["ctrl"], key_map["shift_l"], key_map["alt_r"]})
+
+    def test_modifier_and_number_chord(self):
+        p = MacOSPlatform()
+        result = p.parse_ptt_chord("ctrl+1")
+        key_map = p.get_key_map()
+        assert result == frozenset({key_map["ctrl"], key_map["1"]})
 
     def test_unknown_key_raises(self):
         p = MacOSPlatform()

@@ -6,9 +6,6 @@ from talk_to_vibe.providers.base import BaseSTTProvider
 from talk_to_vibe.platforms.detect import get_platform
 from talk_to_vibe import __version__
 
-DEBOUNCE_SECONDS = 0.05
-
-
 class TalkToVibe:
     def __init__(self, stt: BaseSTTProvider, ptt_key_name: str = "alt_r", auto_enter: bool = False):
         self.platform = get_platform()
@@ -21,52 +18,48 @@ class TalkToVibe:
 
         self.ptt_chord = self.platform.parse_ptt_chord(ptt_key_name)
         self.held_keys: set = set()
-        self._debounce_timer: threading.Timer | None = None
+        self._chord_armed = False
 
     def on_key_press(self, key):
-        self.held_keys.add(key)
+        normalized_key = self.platform.normalize_listener_key(key)
+        self.held_keys.add(normalized_key)
 
-        if self.is_recording or self.processing:
+        if self.processing:
             return
 
-        if self.held_keys == self.ptt_chord:
-            if self._debounce_timer is not None:
-                self._debounce_timer.cancel()
-            self._debounce_timer = threading.Timer(DEBOUNCE_SECONDS, self._start_recording)
-            self._debounce_timer.daemon = True
-            self._debounce_timer.start()
-        else:
-            if self._debounce_timer is not None:
-                self._debounce_timer.cancel()
-                self._debounce_timer = None
-
-    def _start_recording(self):
-        self._debounce_timer = None
         if self.held_keys != self.ptt_chord:
             return
+
+        if self._chord_armed:
+            return
+
+        self._chord_armed = True
+        if self.is_recording:
+            self._stop_recording()
+        else:
+            self._start_recording()
+
+    def _start_recording(self):
         self.is_recording = True
         if not self.recorder.start():
             self.is_recording = False
 
-    def on_key_release(self, key):
-        self.held_keys.discard(key)
+    def _stop_recording(self):
+        self.is_recording = False
+        audio_data, duration = self.recorder.stop()
 
-        if self._debounce_timer is not None:
-            self._debounce_timer.cancel()
-            self._debounce_timer = None
-
-        if not self.is_recording:
+        if audio_data is None:
             return
 
-        if key in self.ptt_chord:
-            self.is_recording = False
-            audio_data, duration = self.recorder.stop()
+        self.processing = True
+        threading.Thread(target=self._process, args=(audio_data, duration), daemon=True).start()
 
-            if audio_data is None:
-                return
+    def on_key_release(self, key):
+        normalized_key = self.platform.normalize_listener_key(key)
+        self.held_keys.discard(normalized_key)
 
-            self.processing = True
-            threading.Thread(target=self._process, args=(audio_data, duration), daemon=True).start()
+        if normalized_key in self.ptt_chord and self.held_keys != self.ptt_chord:
+            self._chord_armed = False
 
     def _process(self, audio_data, duration):
         try:
@@ -97,7 +90,7 @@ class TalkToVibe:
         print(f"  Provider:   {self.stt.provider_name}")
         print(f"  Model:      {self.stt.model}")
         print(f"  Auto-Enter: {'ON' if self.auto_enter else 'OFF'}")
-        print(f"  Hold key to record, release to transcribe.")
+        print(f"  Press chord once to start recording, press again to transcribe.")
         print(f"  Result is auto-pasted to current app.")
         print(f"  Press Ctrl+C to quit.")
         print("━" * 50)

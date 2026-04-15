@@ -6,6 +6,13 @@ from talk_to_vibe.config.loader import load_config
 from talk_to_vibe.config.wizard import run_wizard
 from talk_to_vibe.config.constants import SUPPORTED_PROVIDERS
 from talk_to_vibe.providers.factory import create_provider
+from talk_to_vibe.runtime_paths import APP_BUNDLE_NAME
+
+
+def _setup_hint() -> str:
+    if sys.platform == "darwin":
+        return f"Re-run the setup helper, or open {APP_BUNDLE_NAME} and choose Reconfigure..."
+    return "Run: ./run_ttv.sh --setup"
 
 
 def main():
@@ -46,7 +53,7 @@ def main():
     if errors:
         for err in errors:
             print(f"❌ {err}")
-        print("Run: ./run_ttv.sh --setup")
+        print(_setup_hint())
         sys.exit(1)
 
     stt = create_provider(config)

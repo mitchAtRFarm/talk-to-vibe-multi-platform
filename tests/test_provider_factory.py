@@ -47,8 +47,9 @@ class TestCreateProvider:
 
     def test_missing_groq_key_raises(self):
         cfg = AppConfig(provider="groq")
-        with pytest.raises(ProviderAuthError, match="Groq API key"):
+        with pytest.raises(ProviderAuthError, match="Groq API key") as exc:
             create_provider(cfg)
+        assert "Reconfigure" in str(exc.value)
 
     def test_missing_openai_key_raises(self):
         cfg = AppConfig(provider="openai")
@@ -62,8 +63,9 @@ class TestCreateProvider:
 
     def test_missing_openrouter_key_raises(self):
         cfg = AppConfig(provider="openrouter")
-        with pytest.raises(ProviderAuthError, match="OpenRouter API key"):
+        with pytest.raises(ProviderAuthError, match="OpenRouter API key") as exc:
             create_provider(cfg)
+        assert "TalkToVibe" in str(exc.value)
 
     def test_openrouter_custom_model(self):
         cfg = AppConfig(provider="openrouter", providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-test", model="google/gemini-2.5-flash")))

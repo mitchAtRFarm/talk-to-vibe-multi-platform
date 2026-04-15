@@ -1,4 +1,5 @@
 import time
+from collections.abc import Callable
 
 import numpy as np
 import sounddevice as sd
@@ -19,11 +20,12 @@ def find_real_microphone():
 
 
 class AudioRecorder:
-    def __init__(self):
+    def __init__(self, error_callback: Callable[[str], None] | None = None):
         self.recording = False
         self.audio_frames: list[np.ndarray] = []
         self.stream = None
         self.start_time = 0.0
+        self.error_callback = error_callback
         self.device_id, self.device_name = find_real_microphone()
 
     def start(self) -> bool:
@@ -42,8 +44,14 @@ class AudioRecorder:
             self.stream.start()
         except sd.PortAudioError as e:
             self.recording = False
-            print(f"\n  ❌ Microphone error: {e}")
-            print("     Check System Settings → Privacy → Microphone")
+            message = (
+                f"Microphone error: {e}. "
+                "Check System Settings -> Privacy & Security -> Microphone for TalkToVibe.app."
+            )
+            if self.error_callback is not None:
+                self.error_callback(message)
+            else:
+                print(f"\n  ❌ {message}")
             return False
         return True
 

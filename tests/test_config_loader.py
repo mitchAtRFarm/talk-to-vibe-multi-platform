@@ -11,9 +11,9 @@ class TestAppConfigDefaults:
         cfg = AppConfig()
         assert cfg.provider == "groq"
 
-    def test_default_ptt_key_is_alt_r(self):
+    def test_default_ptt_key_is_f18(self):
         cfg = AppConfig()
-        assert cfg.ptt_key == "alt_r"
+        assert cfg.ptt_key == "ctrl+9"
 
     def test_default_auto_enter_is_false(self):
         cfg = AppConfig()
@@ -99,7 +99,7 @@ class TestLoadConfig:
     def test_load_missing_file_returns_defaults(self, tmp_path):
         cfg = load_config(tmp_path / "nonexistent.yaml")
         assert cfg.provider == "groq"
-        assert cfg.ptt_key == "alt_r"
+        assert cfg.ptt_key == "ctrl+9"
         assert cfg.prompt_file == ""
 
     def test_load_valid_yaml(self, tmp_path):
@@ -145,7 +145,7 @@ class TestLoadConfig:
         p.write_text(yaml.dump({"provider": "openai"}))
         cfg = load_config(p)
         assert cfg.provider == "openai"
-        assert cfg.ptt_key == "alt_r"
+        assert cfg.ptt_key == "ctrl+9"
         assert cfg.auto_enter is False
         assert cfg.prompt_file == ""
         assert cfg.providers.openai.model == "whisper-1"

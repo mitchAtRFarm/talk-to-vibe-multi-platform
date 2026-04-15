@@ -3,7 +3,7 @@ from typing import Optional
 
 import yaml
 
-from talk_to_vibe.config.constants import CONFIG_DIR, CONFIG_FILE
+from talk_to_vibe.config.constants import CONFIG_DIR, CONFIG_FILE, DEFAULT_PTT_KEY
 from talk_to_vibe.config.models import (
     AppConfig,
     ProviderConfig,
@@ -48,7 +48,7 @@ def _dict_to_config(raw: dict) -> AppConfig:
 
     return AppConfig(
         provider=raw.get("provider", "groq"),
-        ptt_key=raw.get("ptt_key", "alt_r"),
+        ptt_key=raw.get("ptt_key", DEFAULT_PTT_KEY),
         auto_enter=raw.get("auto_enter", False),
         prompt_file=raw.get("prompt_file", ""),
         providers=ProviderConfig(

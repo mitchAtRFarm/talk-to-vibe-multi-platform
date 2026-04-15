@@ -37,3 +37,27 @@ class BasePlatform(ABC):
     @abstractmethod
     def get_permission_help(self) -> list[str]:
         ...
+
+    def get_global_key_permission_help(self) -> list[str]:
+        return self.get_permission_help()
+
+    def get_microphone_permission_help(self) -> list[str]:
+        return self.get_permission_help()
+
+    def has_global_key_access(self) -> bool:
+        return True
+
+    def request_global_key_access(self) -> bool:
+        return self.has_global_key_access()
+
+    def get_global_key_access_status(self) -> dict[str, bool]:
+        return {"global_key_access": self.has_global_key_access()}
+
+    def normalize_listener_key(self, key: object) -> object:
+        return key
+
+    def describe_listener_key(self, key: object) -> str:
+        return repr(key)
+
+    def build_listener_kwargs(self, logger) -> dict:
+        return {}

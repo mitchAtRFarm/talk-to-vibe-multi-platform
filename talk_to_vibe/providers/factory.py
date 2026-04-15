@@ -6,6 +6,10 @@ from talk_to_vibe.providers.openrouter_multimodal import OpenRouterMultimodalPro
 from talk_to_vibe.config.models import AppConfig
 from talk_to_vibe.errors import ProviderError, ProviderAuthError
 
+
+def _setup_hint() -> str:
+    return "Re-run setup or use the installed TalkToVibe app's Reconfigure menu item."
+
 PROVIDER_REGISTRY = {
     "groq": GroqWhisperProvider,
     "openai": OpenAIWhisperProvider,
@@ -22,17 +26,17 @@ def create_provider(config: AppConfig) -> BaseSTTProvider:
 
     if provider_name == "groq":
         if not config.providers.groq.api_key:
-            raise ProviderAuthError("Groq API key not found. Run: ./run_ttv.sh --setup")
+            raise ProviderAuthError(f"Groq API key not found. {_setup_hint()}")
         return cls(api_key=config.providers.groq.api_key, model=config.providers.groq.model)
 
     elif provider_name == "openai":
         if not config.providers.openai.api_key:
-            raise ProviderAuthError("OpenAI API key not found. Run: ./run_ttv.sh --setup")
+            raise ProviderAuthError(f"OpenAI API key not found. {_setup_hint()}")
         return cls(api_key=config.providers.openai.api_key, model=config.providers.openai.model)
 
     elif provider_name == "openai_compatible":
         if not config.providers.openai_compatible.base_url:
-            raise ProviderAuthError("Base URL not found. Run: ./run_ttv.sh --setup")
+            raise ProviderAuthError(f"Base URL not found. {_setup_hint()}")
         return cls(
             base_url=config.providers.openai_compatible.base_url,
             api_key=config.providers.openai_compatible.api_key,
@@ -41,7 +45,7 @@ def create_provider(config: AppConfig) -> BaseSTTProvider:
 
     elif provider_name == "openrouter":
         if not config.providers.openrouter.api_key:
-            raise ProviderAuthError("OpenRouter API key not found. Run: ./run_ttv.sh --setup")
+            raise ProviderAuthError(f"OpenRouter API key not found. {_setup_hint()}")
         return cls(
             api_key=config.providers.openrouter.api_key,
             model=config.providers.openrouter.model,

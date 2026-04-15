@@ -1,9 +1,7 @@
-import threading
 from unittest.mock import patch, MagicMock
 import numpy as np
-import pytest
 
-from talk_to_vibe.app import TalkToVibe, DEBOUNCE_SECONDS
+from talk_to_vibe.app import TalkToVibe
 from talk_to_vibe.providers.base import BaseSTTProvider
 from talk_to_vibe.errors import ProviderError
 
@@ -37,6 +35,7 @@ class FakeKey:
 
 
 FAKE_ALT_R = FakeKey("alt_r")
+FAKE_ALT = FakeKey("alt")
 FAKE_CTRL = FakeKey("ctrl")
 FAKE_F18 = FakeKey("f18")
 
@@ -45,11 +44,12 @@ def _make_app(stt=None, **kwargs):
     stt = stt or FakeSTT()
     with patch("talk_to_vibe.app.get_platform") as mock_plat:
         mock_platform = MagicMock()
-        mock_platform.get_key_map.return_value = {"alt_r": FAKE_ALT_R, "ctrl": FAKE_CTRL, "f18": FAKE_F18}
+        mock_platform.get_key_map.return_value = {"alt_r": FAKE_ALT, "alt_l": FAKE_ALT, "alt": FAKE_ALT, "ctrl": FAKE_CTRL, "f18": FAKE_F18}
         mock_platform.get_default_ptt_key.return_value = "alt_r"
+        mock_platform.normalize_listener_key.side_effect = lambda key: FAKE_ALT if key == FAKE_ALT_R else key
         mock_platform.parse_ptt_chord.side_effect = lambda s: frozenset(
-            {FAKE_ALT_R} if s == "alt_r" else
-            {FAKE_CTRL, FAKE_ALT_R} if s == "ctrl+alt_r" else
+            {FAKE_ALT} if s in {"alt_r", "alt_l", "alt"} else
+            {FAKE_CTRL, FAKE_ALT} if s == "ctrl+alt_r" else
             {FAKE_F18} if s == "f18" else
             set()
         )
@@ -103,11 +103,11 @@ class TestTalkToVibeProcess:
 class TestChordInit:
     def test_single_key_chord(self):
         app = _make_app(ptt_key_name="alt_r")
-        assert app.ptt_chord == frozenset({FAKE_ALT_R})
+        assert app.ptt_chord == frozenset({FAKE_ALT})
 
     def test_multi_key_chord(self):
         app = _make_app(ptt_key_name="ctrl+alt_r")
-        assert app.ptt_chord == frozenset({FAKE_CTRL, FAKE_ALT_R})
+        assert app.ptt_chord == frozenset({FAKE_CTRL, FAKE_ALT})
 
     def test_held_keys_initially_empty(self):
         app = _make_app()
@@ -115,107 +115,113 @@ class TestChordInit:
 
 
 class TestChordPress:
-    def test_single_key_press_starts_debounce(self):
-        app = _make_app(ptt_key_name="alt_r")
-        app.on_key_press(FAKE_ALT_R)
-        assert app._debounce_timer is not None
-        app._debounce_timer.cancel()
-
-    def test_chord_press_starts_debounce(self):
-        app = _make_app(ptt_key_name="ctrl+alt_r")
-        app.on_key_press(FAKE_CTRL)
-        assert app._debounce_timer is None
-        app.on_key_press(FAKE_ALT_R)
-        assert app._debounce_timer is not None
-        app._debounce_timer.cancel()
-
-    def test_extra_key_cancels_debounce(self):
-        app = _make_app(ptt_key_name="alt_r")
-        app.on_key_press(FAKE_ALT_R)
-        assert app._debounce_timer is not None
-        app.on_key_press(FakeKey("other"))
-        assert app._debounce_timer is None
-
-    def test_partial_chord_no_debounce(self):
-        app = _make_app(ptt_key_name="ctrl+alt_r")
-        app.on_key_press(FAKE_CTRL)
-        assert app._debounce_timer is None
-
-    def test_no_debounce_while_recording(self):
-        app = _make_app(ptt_key_name="alt_r")
-        app.is_recording = True
-        app.on_key_press(FAKE_ALT_R)
-        assert app._debounce_timer is None
-
-    def test_no_debounce_while_processing(self):
-        app = _make_app(ptt_key_name="alt_r")
-        app.processing = True
-        app.on_key_press(FAKE_ALT_R)
-        assert app._debounce_timer is None
-
-
-class TestChordRelease:
-    def test_release_stops_recording(self):
-        app = _make_app(ptt_key_name="alt_r")
-        app.is_recording = True
-        with patch.object(app, "recorder") as mock_rec:
-            mock_rec.stop.return_value = (np.zeros((16000, 1), dtype=np.int16), 1.0)
-            app.on_key_release(FAKE_ALT_R)
-        assert app.is_recording is False
-
-    def test_release_non_chord_key_ignored(self):
-        app = _make_app(ptt_key_name="alt_r")
-        app.is_recording = True
-        other_key = FakeKey("other")
-        app.on_key_release(other_key)
-        assert app.is_recording is True
-
-    def test_release_removes_from_held_keys(self):
-        app = _make_app(ptt_key_name="alt_r")
-        app.on_key_press(FAKE_ALT_R)
-        assert FAKE_ALT_R in app.held_keys
-        app.on_key_release(FAKE_ALT_R)
-        assert FAKE_ALT_R not in app.held_keys
-
-    def test_release_cancels_debounce(self):
-        app = _make_app(ptt_key_name="alt_r")
-        app.on_key_press(FAKE_ALT_R)
-        assert app._debounce_timer is not None
-        app.on_key_release(FAKE_ALT_R)
-        assert app._debounce_timer is None
-
-    def test_short_recording_ignored(self):
-        app = _make_app(ptt_key_name="alt_r")
-        app.is_recording = True
-        with patch.object(app, "recorder") as mock_rec:
-            mock_rec.stop.return_value = (None, 0.0)
-            app.on_key_release(FAKE_ALT_R)
-        assert app.processing is False
-
-
-class TestDebounceTimer:
-    def test_debounce_fires_recording(self):
+    def test_single_key_press_starts_recording_immediately(self):
         app = _make_app(ptt_key_name="alt_r")
         with patch.object(app, "recorder") as mock_rec:
             mock_rec.start.return_value = True
             app.on_key_press(FAKE_ALT_R)
-            assert app._debounce_timer is not None
-            app._debounce_timer.join()
-            assert app.is_recording is True
+        assert app.is_recording is True
+        assert app._chord_armed is True
 
-    def test_debounce_canceled_if_keys_change(self):
+    def test_chord_press_starts_when_completed(self):
+        app = _make_app(ptt_key_name="ctrl+alt_r")
+        with patch.object(app, "recorder") as mock_rec:
+            mock_rec.start.return_value = True
+            app.on_key_press(FAKE_CTRL)
+            mock_rec.start.assert_not_called()
+            app.on_key_press(FAKE_ALT_R)
+        assert app.is_recording is True
+        assert app.held_keys == {FAKE_CTRL, FAKE_ALT}
+
+    def test_extra_key_prevents_toggle_for_multi_key_chord(self):
+        app = _make_app(ptt_key_name="ctrl+alt_r")
+        with patch.object(app, "recorder") as mock_rec:
+            mock_rec.start.return_value = True
+            app.on_key_press(FAKE_CTRL)
+            app.on_key_press(FakeKey("other"))
+            app.on_key_press(FAKE_ALT_R)
+        mock_rec.start.assert_not_called()
+        assert app.is_recording is False
+
+    def test_partial_chord_does_not_toggle(self):
+        app = _make_app(ptt_key_name="ctrl+alt_r")
+        with patch.object(app, "recorder") as mock_rec:
+            app.on_key_press(FAKE_CTRL)
+        mock_rec.start.assert_not_called()
+        assert app.is_recording is False
+
+    def test_repeat_press_while_armed_is_ignored(self):
+        app = _make_app(ptt_key_name="alt_r")
+        with patch.object(app, "_start_recording") as mock_start, patch.object(app, "_stop_recording") as mock_stop:
+            app.on_key_press(FAKE_ALT_R)
+            app.on_key_press(FAKE_ALT_R)
+        mock_start.assert_called_once()
+        mock_stop.assert_not_called()
+
+    def test_press_ignored_while_processing(self):
+        app = _make_app(ptt_key_name="alt_r")
+        app.processing = True
+        with patch.object(app, "_start_recording") as mock_start:
+            app.on_key_press(FAKE_ALT_R)
+        mock_start.assert_not_called()
+        assert app.is_recording is False
+
+
+class TestChordRelease:
+    def test_release_removes_from_held_keys(self):
+        app = _make_app(ptt_key_name="alt_r")
+        with patch.object(app, "_start_recording"):
+            app.on_key_press(FAKE_ALT_R)
+        assert FAKE_ALT in app.held_keys
+        app.on_key_release(FAKE_ALT_R)
+        assert FAKE_ALT not in app.held_keys
+
+    def test_release_disarms_chord(self):
+        app = _make_app(ptt_key_name="alt_r")
+        app.held_keys.add(FAKE_ALT)
+        app._chord_armed = True
+        app.on_key_release(FAKE_ALT_R)
+        assert app._chord_armed is False
+
+    def test_release_non_chord_key_keeps_chord_armed(self):
+        app = _make_app(ptt_key_name="alt_r")
+        app.held_keys.update({FAKE_ALT, FakeKey("other")})
+        app._chord_armed = True
+        app.on_key_release(FakeKey("other"))
+        assert app._chord_armed is True
+
+
+class TestToggleRecording:
+    def test_second_press_stops_recording_after_release(self):
         app = _make_app(ptt_key_name="alt_r")
         with patch.object(app, "recorder") as mock_rec:
+            mock_rec.start.return_value = True
             app.on_key_press(FAKE_ALT_R)
-            extra = FakeKey("extra")
-            app.on_key_press(extra)
-            assert app._debounce_timer is None
-            assert app.is_recording is False
+            app.on_key_release(FAKE_ALT_R)
+            mock_rec.stop.return_value = (np.zeros((16000, 1), dtype=np.int16), 1.0)
+            with patch("talk_to_vibe.app.threading.Thread") as mock_thread:
+                thread = MagicMock()
+                mock_thread.return_value = thread
+                app.on_key_press(FAKE_ALT_R)
+        assert app.is_recording is False
+        assert app.processing is True
+        thread.start.assert_called_once()
 
-    def test_debounce_does_not_fire_if_keys_no_longer_match(self):
+    def test_second_press_with_short_recording_is_ignored(self):
         app = _make_app(ptt_key_name="alt_r")
-        app.on_key_press(FAKE_ALT_R)
-        timer = app._debounce_timer
-        app.held_keys.add(FakeKey("extra"))
-        timer.join()
+        with patch.object(app, "recorder") as mock_rec:
+            mock_rec.start.return_value = True
+            app.on_key_press(FAKE_ALT_R)
+            app.on_key_release(FAKE_ALT_R)
+            mock_rec.stop.return_value = (None, 0.0)
+            with patch("talk_to_vibe.app.threading.Thread") as mock_thread:
+                app.on_key_press(FAKE_ALT_R)
+        assert app.processing is False
+        mock_thread.assert_not_called()
+
+    def test_start_failure_resets_recording_state(self):
+        app = _make_app(ptt_key_name="alt_r")
+        with patch.object(app, "recorder") as mock_rec:
+            mock_rec.start.return_value = False
+            app.on_key_press(FAKE_ALT_R)
         assert app.is_recording is False

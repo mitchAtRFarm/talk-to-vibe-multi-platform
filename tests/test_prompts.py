@@ -1,4 +1,5 @@
 import pytest
+from importlib import resources
 
 from talk_to_vibe.providers.prompts import load_prompt, load_custom_prompt
 
@@ -30,6 +31,10 @@ class TestLoadPrompt:
     def test_missing_prompt_raises(self):
         with pytest.raises(FileNotFoundError, match="nonexistent"):
             load_prompt("nonexistent")
+
+    def test_prompt_is_loaded_via_package_resources(self):
+        prompt_path = resources.files("talk_to_vibe.providers.prompts").joinpath("transcription.md")
+        assert prompt_path.is_file()
 
 
 class TestLoadCustomPrompt:

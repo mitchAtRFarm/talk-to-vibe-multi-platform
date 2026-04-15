@@ -74,3 +74,14 @@ class TestCLI:
             pass
 
         assert mock_menubar_class.called
+
+    def test_missing_config_on_macos_shows_app_hint(self, monkeypatch, capsys):
+        monkeypatch.setattr("sys.argv", ["talk-to-vibe", "--terminal"])
+        monkeypatch.setattr("sys.platform", "darwin")
+        monkeypatch.setattr("talk_to_vibe.cli.load_config", lambda: AppConfig(provider="groq"))
+
+        with pytest.raises(SystemExit):
+            main()
+
+        captured = capsys.readouterr()
+        assert "TalkToVibe.app" in captured.out

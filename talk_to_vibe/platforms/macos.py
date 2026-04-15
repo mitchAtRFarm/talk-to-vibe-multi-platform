@@ -1,6 +1,8 @@
 import subprocess
 import time
 
+import objc
+
 from talk_to_vibe.platforms.base import BasePlatform
 from talk_to_vibe.errors import PlatformError
 
@@ -8,28 +10,146 @@ _MODIFIER_KEYS = {"alt_r", "alt_l", "cmd_r", "cmd_l", "ctrl_r", "ctrl_l", "shift
 
 
 class MacOSPlatform(BasePlatform):
+    def build_listener_kwargs(self, logger) -> dict:
+        from Quartz import CGEventGetFlags, CGEventGetIntegerValueField, kCGKeyboardEventKeycode
+
+        def intercept(event_type, event):
+            vk = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
+            flags = CGEventGetFlags(event)
+            logger.info("Quartz intercept event_type=%s vk=%s flags=%s", event_type, vk, flags)
+            return event
+
+        return {"darwin_intercept": intercept}
+
+    def normalize_listener_key(self, key: object) -> object:
+        from pynput import keyboard
+
+        generic_map = {
+            keyboard.Key.alt_l: keyboard.Key.alt,
+            keyboard.Key.alt_r: keyboard.Key.alt,
+            keyboard.Key.alt: keyboard.Key.alt,
+            keyboard.Key.ctrl_l: keyboard.Key.ctrl,
+            keyboard.Key.ctrl_r: keyboard.Key.ctrl,
+            keyboard.Key.ctrl: keyboard.Key.ctrl,
+            keyboard.Key.shift_l: keyboard.Key.shift,
+            keyboard.Key.shift_r: keyboard.Key.shift,
+            keyboard.Key.shift: keyboard.Key.shift,
+            keyboard.Key.cmd_l: keyboard.Key.cmd,
+            keyboard.Key.cmd_r: keyboard.Key.cmd,
+            keyboard.Key.cmd: keyboard.Key.cmd,
+        }
+        if isinstance(key, keyboard.KeyCode) and key.vk is not None and not getattr(key, "_is_media", None):
+            return keyboard.KeyCode.from_vk(key.vk)
+        return generic_map.get(key, key)
+
+    def describe_listener_key(self, key: object) -> str:
+        normalized = self.normalize_listener_key(key)
+        if normalized == key:
+            return repr(key)
+        return f"{key!r} -> {normalized!r}"
+
+    def has_global_key_access(self) -> bool:
+        return self.has_accessibility_access() and self.has_listen_event_access()
+
+    def has_accessibility_access(self) -> bool:
+        app_services = objc.loadBundle(
+            "ApplicationServices",
+            globals(),
+            "/System/Library/Frameworks/ApplicationServices.framework",
+        )
+        functions = {}
+        objc.loadBundleFunctions(
+            app_services,
+            functions,
+            [("AXIsProcessTrusted", b"Z")],
+        )
+        return bool(functions["AXIsProcessTrusted"]())
+
+    def request_accessibility_access(self) -> bool:
+        app_services = objc.loadBundle(
+            "ApplicationServices",
+            globals(),
+            "/System/Library/Frameworks/ApplicationServices.framework",
+        )
+        functions = {}
+        objc.loadBundleFunctions(
+            app_services,
+            functions,
+            [("AXIsProcessTrustedWithOptions", b"Z@")],
+        )
+        return bool(functions["AXIsProcessTrustedWithOptions"]({"AXTrustedCheckOptionPrompt": True}))
+
+    def has_listen_event_access(self) -> bool:
+        from Quartz import CGPreflightListenEventAccess
+
+        return bool(CGPreflightListenEventAccess())
+
+    def request_global_key_access(self) -> bool:
+        from Quartz import CGRequestListenEventAccess
+
+        listen_event_ok = bool(CGRequestListenEventAccess())
+        accessibility_ok = self.request_accessibility_access()
+        return listen_event_ok and accessibility_ok
+
+    def get_global_key_access_status(self) -> dict[str, bool]:
+        return {
+            "accessibility": self.has_accessibility_access(),
+            "listen_event": self.has_listen_event_access(),
+        }
+
     def get_key_map(self) -> dict[str, object]:
         from pynput import keyboard
         return {
-            "alt_r": keyboard.Key.alt_r,
-            "alt_l": keyboard.Key.alt_l,
-            "alt": keyboard.Key.alt_l,
-            "cmd_r": keyboard.Key.cmd_r,
-            "cmd_l": keyboard.Key.cmd_l,
-            "cmd": keyboard.Key.cmd_l,
-            "ctrl_r": keyboard.Key.ctrl_r,
-            "ctrl_l": keyboard.Key.ctrl_l,
-            "ctrl": keyboard.Key.ctrl_l,
-            "shift_r": keyboard.Key.shift_r,
-            "shift_l": keyboard.Key.shift_l,
-            "shift": keyboard.Key.shift_l,
+            "1": keyboard.KeyCode.from_vk(0x12),
+            "2": keyboard.KeyCode.from_vk(0x13),
+            "3": keyboard.KeyCode.from_vk(0x14),
+            "4": keyboard.KeyCode.from_vk(0x15),
+            "5": keyboard.KeyCode.from_vk(0x17),
+            "6": keyboard.KeyCode.from_vk(0x16),
+            "7": keyboard.KeyCode.from_vk(0x1A),
+            "8": keyboard.KeyCode.from_vk(0x1C),
+            "9": keyboard.KeyCode.from_vk(0x19),
+            "0": keyboard.KeyCode.from_vk(0x1D),
             "f18": keyboard.KeyCode.from_vk(0x4F),
             "f19": keyboard.KeyCode.from_vk(0x50),
             "f20": keyboard.KeyCode.from_vk(0x5A),
+            "f9": keyboard.Key.f9,
+            "f10": keyboard.Key.f10,
+            "f11": keyboard.Key.f11,
+            "f12": keyboard.Key.f12,
+            "alt_r": keyboard.Key.alt,
+            "alt_l": keyboard.Key.alt,
+            "alt": keyboard.Key.alt,
+            "cmd_r": keyboard.Key.cmd,
+            "cmd_l": keyboard.Key.cmd,
+            "cmd": keyboard.Key.cmd,
+            "ctrl_r": keyboard.Key.ctrl,
+            "ctrl_l": keyboard.Key.ctrl,
+            "ctrl": keyboard.Key.ctrl,
+            "shift_r": keyboard.Key.shift,
+            "shift_l": keyboard.Key.shift,
+            "shift": keyboard.Key.shift,
         }
 
     def get_key_display_names(self) -> dict[str, str]:
         return {
+            "1": "1",
+            "2": "2",
+            "3": "3",
+            "4": "4",
+            "5": "5",
+            "6": "6",
+            "7": "7",
+            "8": "8",
+            "9": "9",
+            "0": "0",
+            "f18": "F18",
+            "f19": "F19",
+            "f20": "F20",
+            "f9": "F9",
+            "f10": "F10",
+            "f11": "F11",
+            "f12": "F12",
             "alt_r": "Right Option (⌥)",
             "alt_l": "Left Option (⌥)",
             "alt": "Option (⌥)",
@@ -42,17 +162,12 @@ class MacOSPlatform(BasePlatform):
             "shift_r": "Right Shift (⇧)",
             "shift_l": "Left Shift (⇧)",
             "shift": "Shift (⇧)",
-            "f18": "F18",
-            "f19": "F19",
-            "f20": "F20",
         }
 
     def get_default_ptt_key(self) -> str:
-        return "alt_r"
+        return "ctrl+9"
 
     def parse_ptt_chord(self, chord_str: str) -> frozenset:
-        from pynput import keyboard
-
         key_map = self.get_key_map()
         parts = [p.strip() for p in chord_str.split("+")]
         keys = set()
@@ -97,7 +212,15 @@ class MacOSPlatform(BasePlatform):
         )
 
     def get_permission_help(self) -> list[str]:
+        return self.get_global_key_permission_help() + self.get_microphone_permission_help()
+
+    def get_global_key_permission_help(self) -> list[str]:
         return [
-            "Accessibility: System Settings → Privacy & Security → Accessibility",
+            "Input Monitoring or event access: System Settings -> Privacy & Security -> Input Monitoring",
+            "Accessibility: System Settings -> Privacy & Security -> Accessibility",
+        ]
+
+    def get_microphone_permission_help(self) -> list[str]:
+        return [
             "Microphone: System Settings → Privacy & Security → Microphone",
         ]

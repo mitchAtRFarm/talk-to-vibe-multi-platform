@@ -1,8 +1,7 @@
 import signal
-import threading
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 import numpy as np
-import pytest
 
 import rumps as _rumps
 
@@ -39,6 +38,7 @@ class FakeKey:
 
 
 FAKE_ALT_R = FakeKey("alt_r")
+FAKE_ALT = FakeKey("alt")
 FAKE_CTRL = FakeKey("ctrl")
 
 
@@ -58,11 +58,28 @@ def _fake_rumps_init(self, *a, **kw):
 
 def _mock_platform():
     mock_platform = MagicMock()
-    mock_platform.get_key_map.return_value = {"alt_r": FAKE_ALT_R, "ctrl": FAKE_CTRL}
+    mock_platform.get_key_map.return_value = {"alt_r": FAKE_ALT, "alt_l": FAKE_ALT, "alt": FAKE_ALT, "ctrl": FAKE_CTRL}
     mock_platform.get_default_ptt_key.return_value = "alt_r"
+    mock_platform.has_global_key_access.return_value = True
+    mock_platform.request_global_key_access.return_value = True
+    mock_platform.normalize_listener_key.side_effect = lambda key: FAKE_ALT if key == FAKE_ALT_R else key
+    mock_platform.describe_listener_key.side_effect = lambda key: repr(key)
+    mock_platform.build_listener_kwargs.return_value = {}
+    mock_platform.get_permission_help.return_value = [
+        "Input Monitoring: System Settings -> Privacy & Security -> Input Monitoring",
+        "Accessibility: System Settings -> Privacy & Security -> Accessibility",
+        "Microphone: System Settings -> Privacy & Security -> Microphone",
+    ]
+    mock_platform.get_global_key_permission_help.return_value = [
+        "Input Monitoring: System Settings -> Privacy & Security -> Input Monitoring",
+        "Accessibility: System Settings -> Privacy & Security -> Accessibility",
+    ]
+    mock_platform.get_microphone_permission_help.return_value = [
+        "Microphone: System Settings -> Privacy & Security -> Microphone",
+    ]
     mock_platform.parse_ptt_chord.side_effect = lambda s: frozenset(
-        {FAKE_ALT_R} if s == "alt_r" else
-        {FAKE_CTRL, FAKE_ALT_R} if s == "ctrl+alt_r" else set()
+        {FAKE_ALT} if s in {"alt_r", "alt_l", "alt"} else
+        {FAKE_CTRL, FAKE_ALT} if s == "ctrl+alt_r" else set()
     )
     mock_platform.get_chord_display_name.side_effect = lambda s: s.replace("+", " + ")
     return mock_platform
@@ -81,11 +98,11 @@ def _make_menubar_app(stt=None, **kwargs):
 class TestMenuBarChordInit:
     def test_single_key_chord(self):
         app = _make_menubar_app(ptt_key_name="alt_r")
-        assert app.ptt_chord == frozenset({FAKE_ALT_R})
+        assert app.ptt_chord == frozenset({FAKE_ALT})
 
     def test_multi_key_chord(self):
         app = _make_menubar_app(ptt_key_name="ctrl+alt_r")
-        assert app.ptt_chord == frozenset({FAKE_CTRL, FAKE_ALT_R})
+        assert app.ptt_chord == frozenset({FAKE_CTRL, FAKE_ALT})
 
     def test_held_keys_initially_empty(self):
         app = _make_menubar_app()
@@ -100,65 +117,147 @@ class TestMenuBarChordInit:
         assert app.prompt_file == "~/my_prompt.md"
 
 
+class TestMenuBarPermissions:
+    def test_start_listener_warns_but_starts_without_global_key_access(self):
+        app = _make_menubar_app()
+        app.platform.get_global_key_access_status.return_value = {
+            "accessibility": False,
+            "listen_event": False,
+        }
+        with patch("talk_to_vibe.menubar.rumps") as mock_rumps, \
+             patch("pynput.keyboard.Listener") as mock_listener:
+            listener = MagicMock()
+            listener._thread = MagicMock()
+            mock_listener.return_value = listener
+            app._start_listener()
+        app.platform.request_global_key_access.assert_called_once()
+        notification_message = mock_rumps.notification.call_args[0][2]
+        assert "Input Monitoring" in notification_message or "Accessibility" in notification_message
+        mock_rumps.alert.assert_not_called()
+        mock_listener.assert_called_once()
+
+    def test_start_listener_logs_ptt_key(self, caplog):
+        app = _make_menubar_app(ptt_key_name="alt_r")
+        caplog.set_level("INFO")
+        with patch("pynput.keyboard.Listener") as mock_listener:
+            listener = MagicMock()
+            mock_listener.return_value = listener
+            app._start_listener()
+        assert "ptt_key=alt_r" in caplog.text
+        listener.start.assert_called_once()
+
+    def test_start_listener_alerts_on_listener_exception(self):
+        app = _make_menubar_app(ptt_key_name="alt_r")
+        with patch("pynput.keyboard.Listener", side_effect=RuntimeError("listener failed")), \
+             patch("talk_to_vibe.menubar.rumps") as mock_rumps:
+            app._start_listener()
+        alert_message = mock_rumps.alert.call_args[0][1]
+        assert "listener failed" in alert_message
+
+
 class TestMenuBarChordPress:
-    def test_press_starts_debounce(self):
-        app = _make_menubar_app()
-        app.on_key_press(FAKE_ALT_R)
-        assert app._debounce_timer is not None
-        app._debounce_timer.cancel()
-
-    def test_extra_key_cancels_debounce(self):
-        app = _make_menubar_app()
-        app.on_key_press(FAKE_ALT_R)
-        app.on_key_press(FakeKey("extra"))
-        assert app._debounce_timer is None
-
-    def test_partial_chord_no_debounce(self):
-        app = _make_menubar_app(ptt_key_name="ctrl+alt_r")
-        app.on_key_press(FAKE_CTRL)
-        assert app._debounce_timer is None
-
-
-class TestMenuBarChordRelease:
-    def test_release_stops_recording(self):
-        app = _make_menubar_app()
-        app.is_recording = True
-        with patch.object(app, "recorder") as mock_rec:
-            mock_rec.stop.return_value = (np.zeros((16000, 1), dtype=np.int16), 1.0)
-            app.on_key_release(FAKE_ALT_R)
-        assert app.is_recording is False
-
-    def test_release_cancels_debounce(self):
-        app = _make_menubar_app()
-        app.on_key_press(FAKE_ALT_R)
-        assert app._debounce_timer is not None
-        app.on_key_release(FAKE_ALT_R)
-        assert app._debounce_timer is None
-
-    def test_release_removes_from_held_keys(self):
-        app = _make_menubar_app()
-        app.on_key_press(FAKE_ALT_R)
-        assert FAKE_ALT_R in app.held_keys
-        app.on_key_release(FAKE_ALT_R)
-        assert FAKE_ALT_R not in app.held_keys
-
-    def test_short_recording_ignored(self):
-        app = _make_menubar_app()
-        app.is_recording = True
-        with patch.object(app, "recorder") as mock_rec:
-            mock_rec.stop.return_value = (None, 0.0)
-            app.on_key_release(FAKE_ALT_R)
-        assert app.processing is False
-
-
-class TestMenuBarDebounce:
-    def test_debounce_fires_recording(self):
+    def test_press_starts_recording_immediately(self):
         app = _make_menubar_app()
         with patch.object(app, "recorder") as mock_rec:
             mock_rec.start.return_value = True
             app.on_key_press(FAKE_ALT_R)
-            app._debounce_timer.join()
-            assert app.is_recording is True
+        assert app.is_recording is True
+        assert app._chord_armed is True
+
+    def test_extra_key_prevents_toggle_for_multi_key_chord(self):
+        app = _make_menubar_app(ptt_key_name="ctrl+alt_r")
+        with patch.object(app, "recorder") as mock_rec:
+            mock_rec.start.return_value = True
+            app.on_key_press(FAKE_CTRL)
+            app.on_key_press(FakeKey("extra"))
+            app.on_key_press(FAKE_ALT_R)
+        mock_rec.start.assert_not_called()
+        assert app.is_recording is False
+
+    def test_partial_chord_does_not_toggle(self):
+        app = _make_menubar_app(ptt_key_name="ctrl+alt_r")
+        with patch.object(app, "recorder") as mock_rec:
+            app.on_key_press(FAKE_CTRL)
+        mock_rec.start.assert_not_called()
+        assert app.is_recording is False
+
+    def test_repeat_press_while_armed_is_ignored(self):
+        app = _make_menubar_app()
+        with patch.object(app, "_start_recording") as mock_start, patch.object(app, "_stop_recording") as mock_stop:
+            app.on_key_press(FAKE_ALT_R)
+            app.on_key_press(FAKE_ALT_R)
+        mock_start.assert_called_once()
+        mock_stop.assert_not_called()
+
+
+class TestMenuBarChordRelease:
+    def test_release_removes_from_held_keys(self):
+        app = _make_menubar_app()
+        with patch.object(app, "_start_recording"):
+            app.on_key_press(FAKE_ALT_R)
+        assert FAKE_ALT in app.held_keys
+        app.on_key_release(FAKE_ALT_R)
+        assert FAKE_ALT not in app.held_keys
+
+    def test_release_disarms_chord(self):
+        app = _make_menubar_app()
+        app.held_keys.add(FAKE_ALT)
+        app._chord_armed = True
+        app.on_key_release(FAKE_ALT_R)
+        assert app._chord_armed is False
+
+    def test_release_non_chord_key_keeps_chord_armed(self):
+        app = _make_menubar_app()
+        app.held_keys.update({FAKE_ALT, FakeKey("other")})
+        app._chord_armed = True
+        app.on_key_release(FakeKey("other"))
+        assert app._chord_armed is True
+
+
+class TestMenuBarToggleRecording:
+    def test_second_press_stops_recording_after_release(self):
+        app = _make_menubar_app()
+        with patch.object(app, "recorder") as mock_rec:
+            mock_rec.start.return_value = True
+            app.on_key_press(FAKE_ALT_R)
+            app.on_key_release(FAKE_ALT_R)
+            mock_rec.stop.return_value = (np.zeros((16000, 1), dtype=np.int16), 1.0)
+            with patch("talk_to_vibe.menubar.threading.Thread") as mock_thread:
+                thread = MagicMock()
+                mock_thread.return_value = thread
+                app.on_key_press(FAKE_ALT_R)
+        assert app.is_recording is False
+        assert app.processing is True
+        assert app._pending_title == TITLE_TRANSCRIBING
+        thread.start.assert_called_once()
+
+    def test_second_press_with_short_recording_is_ignored(self):
+        app = _make_menubar_app()
+        with patch.object(app, "recorder") as mock_rec:
+            mock_rec.start.return_value = True
+            app.on_key_press(FAKE_ALT_R)
+            app.on_key_release(FAKE_ALT_R)
+            mock_rec.stop.return_value = (None, 0.0)
+            with patch("talk_to_vibe.menubar.threading.Thread") as mock_thread:
+                app.on_key_press(FAKE_ALT_R)
+        assert app.processing is False
+        assert app._pending_title == TITLE_IDLE
+        mock_thread.assert_not_called()
+
+    def test_press_ignored_while_processing(self):
+        app = _make_menubar_app()
+        app.processing = True
+        with patch.object(app, "_start_recording") as mock_start:
+            app.on_key_press(FAKE_ALT_R)
+        mock_start.assert_not_called()
+
+    def test_start_failure_resets_idle_title(self):
+        app = _make_menubar_app()
+        with patch.object(app, "recorder") as mock_rec:
+            mock_rec.start.return_value = False
+            app.on_key_press(FAKE_ALT_R)
+        assert app.is_recording is False
+        assert app._pending_title == TITLE_IDLE
 
 
 class TestMenuBarProcess:
@@ -288,6 +387,16 @@ class TestMenuBarAutoEnterToggle:
 
 
 class TestMenuBarReconfigure:
+    def test_reconfigure_prefers_installed_helper(self):
+        app = _make_menubar_app()
+        with patch("talk_to_vibe.menubar.INSTALLED_CONFIGURE_HELPER_PATH", Path("/tmp/talktovibe-configure")), \
+             patch("pathlib.Path.exists", return_value=True), \
+             patch("talk_to_vibe.menubar.subprocess") as mock_subprocess, \
+             patch("talk_to_vibe.menubar.rumps"):
+            app._reconfigure(None)
+            call_args = mock_subprocess.Popen.call_args[0][0]
+            assert "/tmp/talktovibe-configure" in call_args
+
     def test_reconfigure_opens_terminal(self):
         app = _make_menubar_app()
         with patch("talk_to_vibe.menubar.subprocess") as mock_subprocess, \
@@ -298,6 +407,27 @@ class TestMenuBarReconfigure:
             assert call_args[0] == "open"
             assert call_args[1] == "-a"
             assert call_args[2] == "Terminal"
+
+    def test_reconfigure_falls_back_to_repo_helper(self):
+        app = _make_menubar_app()
+        helper_path = Path("/tmp/helper")
+        with patch("talk_to_vibe.menubar.INSTALLED_CONFIGURE_HELPER_PATH", helper_path), \
+             patch("talk_to_vibe.menubar.Path.exists", side_effect=[False, True]), \
+             patch("talk_to_vibe.menubar.subprocess") as mock_subprocess, \
+             patch("talk_to_vibe.menubar.rumps"):
+            app._reconfigure(None)
+            call_args = mock_subprocess.Popen.call_args[0][0]
+            assert str(call_args[3]).endswith("run_ttv.sh")
+
+    def test_reconfigure_alerts_when_no_helper_exists(self):
+        app = _make_menubar_app()
+        with patch("talk_to_vibe.menubar.INSTALLED_CONFIGURE_HELPER_PATH", Path("/tmp/helper")), \
+             patch("talk_to_vibe.menubar.Path.exists", return_value=False), \
+             patch("talk_to_vibe.menubar.subprocess") as mock_subprocess, \
+             patch("talk_to_vibe.menubar.rumps") as mock_rumps:
+            app._reconfigure(None)
+            mock_subprocess.Popen.assert_not_called()
+            mock_rumps.alert.assert_called_once()
 
     def test_reconfigure_shows_alert(self):
         app = _make_menubar_app()
@@ -316,12 +446,11 @@ class TestMenuBarCleanup:
             app._cleanup()
         assert app.is_recording is False
 
-    def test_cleanup_cancels_debounce_timer(self):
+    def test_cleanup_disarms_chord(self):
         app = _make_menubar_app()
-        app.on_key_press(FAKE_ALT_R)
-        assert app._debounce_timer is not None
+        app._chord_armed = True
         app._cleanup()
-        assert app._debounce_timer is None
+        assert app._chord_armed is False
 
     def test_cleanup_clears_held_keys(self):
         app = _make_menubar_app()
@@ -334,7 +463,7 @@ class TestMenuBarCleanup:
         app = _make_menubar_app()
         app._cleanup()
         assert app.is_recording is False
-        assert app._debounce_timer is None
+        assert app._chord_armed is False
 
 
 class TestMenuBarQuit:
@@ -379,21 +508,25 @@ class TestMenuBarTitleStates:
         with patch.object(app, "recorder") as mock_rec:
             mock_rec.start.return_value = True
             app.on_key_press(FAKE_ALT_R)
-            app._debounce_timer.join()
         assert app._pending_title == TITLE_RECORDING
 
     def test_transcribing_queues_title(self):
         app = _make_menubar_app()
-        app.is_recording = True
         with patch.object(app, "recorder") as mock_rec:
-            mock_rec.stop.return_value = (np.zeros((16000, 1), dtype=np.int16), 1.0)
+            mock_rec.start.return_value = True
+            app.on_key_press(FAKE_ALT_R)
             app.on_key_release(FAKE_ALT_R)
+            mock_rec.stop.return_value = (np.zeros((16000, 1), dtype=np.int16), 1.0)
+            with patch("talk_to_vibe.menubar.threading.Thread"):
+                app.on_key_press(FAKE_ALT_R)
         assert app._pending_title == TITLE_TRANSCRIBING
 
     def test_short_recording_queues_idle(self):
         app = _make_menubar_app()
-        app.is_recording = True
         with patch.object(app, "recorder") as mock_rec:
-            mock_rec.stop.return_value = (None, 0.0)
+            mock_rec.start.return_value = True
+            app.on_key_press(FAKE_ALT_R)
             app.on_key_release(FAKE_ALT_R)
+            mock_rec.stop.return_value = (None, 0.0)
+            app.on_key_press(FAKE_ALT_R)
         assert app._pending_title == TITLE_IDLE

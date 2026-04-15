@@ -24,3 +24,7 @@ __pycache__/
 # Test / cache
 .pytest_cache/
 .mypy_cache/
+
+# Build artifacts
+build/
+dist/

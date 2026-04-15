@@ -4,6 +4,6 @@ CONFIG_DIR = Path.home() / ".talktovibe"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
 
 DEFAULT_PROVIDER = "groq"
-DEFAULT_PTT_KEY = "alt_r"
+DEFAULT_PTT_KEY = "ctrl+9"
 
 SUPPORTED_PROVIDERS = ["groq", "openai", "openai_compatible", "openrouter"]
