@@ -3,6 +3,7 @@ from talk_to_vibe.providers.groq_whisper import GroqWhisperProvider
 from talk_to_vibe.providers.openai_whisper import OpenAIWhisperProvider
 from talk_to_vibe.providers.openai_compatible import OpenAICompatibleProvider
 from talk_to_vibe.providers.openrouter_multimodal import OpenRouterMultimodalProvider
+from talk_to_vibe.providers.local_whisper import LocalWhisperProvider
 from talk_to_vibe.config.models import AppConfig
 from talk_to_vibe.errors import ProviderError, ProviderAuthError
 
@@ -10,11 +11,13 @@ from talk_to_vibe.errors import ProviderError, ProviderAuthError
 def _setup_hint() -> str:
     return "Re-run setup or use the installed TalkToVibe app's Reconfigure menu item."
 
+
 PROVIDER_REGISTRY = {
     "groq": GroqWhisperProvider,
     "openai": OpenAIWhisperProvider,
     "openai_compatible": OpenAICompatibleProvider,
     "openrouter": OpenRouterMultimodalProvider,
+    "local_whisper": LocalWhisperProvider,
 }
 
 
@@ -23,6 +26,25 @@ def create_provider(config: AppConfig) -> BaseSTTProvider:
     cls = PROVIDER_REGISTRY.get(provider_name)
     if cls is None:
         raise ProviderError(f"Unknown provider: {provider_name}")
+
+    if provider_name == "local_whisper":
+        lw = config.providers.local_whisper
+        try:
+            return cls(
+                model_size=lw.model_size,
+                device=lw.device,
+                compute_type=lw.compute_type,
+                language=lw.language,
+                model_dir=lw.model_dir,
+                cpu_threads=lw.cpu_threads,
+                beam_size=lw.beam_size,
+                vad_filter=lw.vad_filter,
+            )
+        except ImportError as exc:
+            raise ProviderError(
+                "faster-whisper is not installed. Run linux_install_and_set_whisper.sh "
+                "to install it, or pip install faster-whisper inside the venv."
+            ) from exc
 
     if provider_name == "groq":
         if not config.providers.groq.api_key:

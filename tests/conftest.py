@@ -1,6 +1,45 @@
 import os
+import sys
+import types
 
 import pytest
+
+
+def _ensure_sounddevice_importable():
+    try:
+        import sounddevice  # noqa: F401
+        return
+    except OSError:
+        pass
+
+    fake = types.ModuleType("sounddevice")
+
+    class PortAudioError(Exception):
+        pass
+
+    class _InputStream:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    def query_devices():
+        return []
+
+    fake.PortAudioError = PortAudioError
+    fake.InputStream = _InputStream
+    fake.query_devices = query_devices
+    sys.modules["sounddevice"] = fake
+
+
+_ensure_sounddevice_importable()
 
 
 @pytest.fixture(scope="session", autouse=True)

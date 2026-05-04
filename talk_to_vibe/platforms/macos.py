@@ -1,8 +1,6 @@
 import subprocess
 import time
 
-import objc
-
 from talk_to_vibe.platforms.base import BasePlatform
 from talk_to_vibe.errors import PlatformError
 
@@ -53,6 +51,8 @@ class MacOSPlatform(BasePlatform):
         return self.has_accessibility_access() and self.has_listen_event_access()
 
     def has_accessibility_access(self) -> bool:
+        import objc
+
         app_services = objc.loadBundle(
             "ApplicationServices",
             globals(),
@@ -67,6 +67,8 @@ class MacOSPlatform(BasePlatform):
         return bool(functions["AXIsProcessTrusted"]())
 
     def request_accessibility_access(self) -> bool:
+        import objc
+
         app_services = objc.loadBundle(
             "ApplicationServices",
             globals(),

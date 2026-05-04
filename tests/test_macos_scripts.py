@@ -4,8 +4,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_setup_script_exists_and_mentions_talktovibe_app():
-    path = REPO_ROOT / "setup_macos.sh"
-    content = path.read_text()
+    content = (REPO_ROOT / "setup_macos.sh").read_text()
     assert "TalkToVibe.app" in content
     assert "pyinstaller" in content.lower()
     assert "LaunchAgents" in content
@@ -26,8 +25,7 @@ def test_setup_script_uses_python_for_secret_generation():
 
 
 def test_uninstall_script_defaults_to_removing_config_unless_keep_flag():
-    path = REPO_ROOT / "uninstall_macos.sh"
-    content = path.read_text()
+    content = (REPO_ROOT / "uninstall_macos.sh").read_text()
     assert "--keep-config" in content
     assert "rm -f \"$CONFIG_PATH\"" in content
 

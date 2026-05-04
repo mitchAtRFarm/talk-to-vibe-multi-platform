@@ -1,0 +1,12 @@
+# Optional local-Whisper extras for TalkToVibe.
+# Installed by linux_install_and_set_whisper.sh — not pulled in by the
+# default setup_linux.sh because these are heavy and only useful when
+# running the local_whisper provider.
+faster-whisper>=1.1.0
+ctranslate2>=4.5.0
+
+# CUDA 12 runtime libs as pip wheels. Self-contained inside the venv —
+# no system cuDNN install required. The installer skips these on CPU-only
+# machines.
+nvidia-cublas-cu12>=12.4.5.8
+nvidia-cudnn-cu12>=9.1.0.70

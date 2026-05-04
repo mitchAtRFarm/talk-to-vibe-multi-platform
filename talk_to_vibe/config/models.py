@@ -30,11 +30,24 @@ class OpenRouterConfig:
 
 
 @dataclass
+class LocalWhisperConfig:
+    model_size: str = "large-v3-turbo"
+    device: str = "auto"
+    compute_type: str = "auto"
+    language: str = "en"
+    model_dir: str = ""
+    cpu_threads: int = 0
+    beam_size: int = 5
+    vad_filter: bool = True
+
+
+@dataclass
 class ProviderConfig:
     groq: GroqConfig = field(default_factory=GroqConfig)
     openai: OpenAIConfig = field(default_factory=OpenAIConfig)
     openai_compatible: OpenAICompatibleConfig = field(default_factory=OpenAICompatibleConfig)
     openrouter: OpenRouterConfig = field(default_factory=OpenRouterConfig)
+    local_whisper: LocalWhisperConfig = field(default_factory=LocalWhisperConfig)
 
 
 @dataclass
@@ -43,11 +56,12 @@ class AppConfig:
     ptt_key: str = DEFAULT_PTT_KEY
     auto_enter: bool = False
     prompt_file: str = ""
+    mic_preferences: list[str] = field(default_factory=list)
     providers: ProviderConfig = field(default_factory=ProviderConfig)
 
     def validate(self) -> list[str]:
         errors = []
-        if self.provider not in ("groq", "openai", "openai_compatible", "openrouter"):
+        if self.provider not in ("groq", "openai", "openai_compatible", "openrouter", "local_whisper"):
             errors.append(f"Unknown provider: {self.provider}")
         if self.provider == "groq":
             if not self.providers.groq.api_key:
@@ -71,4 +85,23 @@ class AppConfig:
                 errors.append("OpenRouter model is required when provider is 'openrouter'")
             if not self.providers.openrouter.base_url:
                 errors.append("OpenRouter base URL is required when provider is 'openrouter'")
+        if self.provider == "local_whisper":
+            if not self.providers.local_whisper.model_size:
+                errors.append("Local Whisper model_size is required when provider is 'local_whisper'")
+            if self.providers.local_whisper.device not in ("auto", "cuda", "cpu"):
+                errors.append(
+                    f"Local Whisper device must be auto/cuda/cpu, got: {self.providers.local_whisper.device}"
+                )
+            if self.providers.local_whisper.compute_type not in (
+                "auto",
+                "float16",
+                "float32",
+                "int8",
+                "int8_float16",
+                "int8_float32",
+                "int16",
+            ):
+                errors.append(
+                    f"Local Whisper compute_type invalid: {self.providers.local_whisper.compute_type}"
+                )
         return errors

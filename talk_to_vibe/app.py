@@ -10,9 +10,15 @@ STALE_KEY_STATE_SECONDS = 2.0
 STALE_CHORD_ARM_SECONDS = 2.0
 
 class TalkToVibe:
-    def __init__(self, stt: BaseSTTProvider, ptt_key_name: str = "alt_r", auto_enter: bool = False):
+    def __init__(
+        self,
+        stt: BaseSTTProvider,
+        ptt_key_name: str = "alt_r",
+        auto_enter: bool = False,
+        mic_preferences: list[str] | None = None,
+    ):
         self.platform = get_platform()
-        self.recorder = AudioRecorder()
+        self.recorder = AudioRecorder(mic_preferences=mic_preferences)
         self.stt = stt
         self.ptt_key_name = ptt_key_name
         self.auto_enter = auto_enter
