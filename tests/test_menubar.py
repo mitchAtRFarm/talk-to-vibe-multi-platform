@@ -1,9 +1,14 @@
 import signal
+import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import numpy as np
 
-import rumps as _rumps
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="menubar tests are macOS-only")
+
+_rumps = pytest.importorskip("rumps")
 
 from talk_to_vibe.providers.base import BaseSTTProvider
 from talk_to_vibe.menubar import TITLE_IDLE, TITLE_RECORDING, TITLE_TRANSCRIBING

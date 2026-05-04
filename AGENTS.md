@@ -12,9 +12,10 @@ talk_to_vibe/
   audio/       — microphone recording, WAV helpers
   providers/   — STT backends (groq, openai, openai_compatible, openrouter)
   providers/prompts/ — Bundled .md prompt files and loader (transcription.md)
-  platforms/   — OS-specific behavior (macOS active, Linux/Windows stubs)
+  platforms/   — OS-specific behavior (macOS + Linux active, Windows stub)
   app.py       — main app loop (terminal mode)
-  menubar.py   — rumps menu bar app (macOS default)
+  menubar.py   — rumps menu bar app (macOS)
+  tray.py      — pystray AppIndicator tray app (Linux/X11)
   cli.py       — argument parsing and entry point wiring
   errors.py    — custom exceptions
 ```
@@ -80,6 +81,7 @@ There are two distinct provider types in this codebase. They use different API s
 - All providers implement `transcribe(audio_data: numpy.ndarray) -> str`
 - All providers set `provider_name: str` and `model: str` attributes
 - Platform adapters implement `paste_text`, `play_success_sound`, `get_key_map`, `parse_ptt_chord`, `get_chord_display_name`, `is_modifier_only`
-- Launch the app with `./run_ttv.sh` (menu bar mode on macOS, terminal mode with `--terminal`)
+- Launch the app with `./run_ttv.sh` (menu bar / tray mode by default on macOS and Linux, terminal mode with `--terminal`)
+- Linux requires an X11 session — Wayland blocks pynput's global key listener. The tray detects this and surfaces a notify-send warning.
 - Transcription prompts live in `providers/prompts/` as `.md` files — `load_prompt(name)` loads a bundled prompt, `load_custom_prompt(path)` loads a user-supplied one
 - `prompt_file` config field overrides the bundled transcription prompt with a custom `.md` file path; empty string means use the bundled prompt

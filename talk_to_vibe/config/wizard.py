@@ -41,6 +41,7 @@ def run_wizard(config: AppConfig | None = None, force: bool = False) -> AppConfi
         "openai": "OpenAI — Whisper transcription (paid)",
         "openai_compatible": "OpenAI-Compatible — Whisper transcription (self-hosted)",
         "openrouter": "OpenRouter — Multimodal chat models (Gemini, etc.)",
+        "local_whisper": "Local Whisper — On-device transcription (faster-whisper, GPU optional)",
     }
 
     for i, key in enumerate(SUPPORTED_PROVIDERS, 1):
@@ -102,6 +103,7 @@ def run_wizard(config: AppConfig | None = None, force: bool = False) -> AppConfi
             config.providers.openrouter.base_url = base_url
 
     _configure_ptt_key(config)
+    _configure_mic_preferences(config)
     _configure_auto_enter(config)
     _configure_prompt_file(config)
 
@@ -183,6 +185,74 @@ def _warn_if_modifier_only(platform, chord_str: str) -> None:
     if platform.is_modifier_only(chord_str):
         print("   ⚠️  Warning: modifier-only keys are unreliable on macOS global event taps.")
         print("      Prefer Control + number chords like ctrl+9, or F18/F19/F20 on full keyboards.")
+
+
+def _configure_mic_preferences(config: AppConfig) -> None:
+    print("\n🎤 Microphone Preferences\n")
+    print("   Pick a priority order for input devices. The first available")
+    print("   match is used at recording time. Useful for KVM / USB hot-plug")
+    print("   setups: when your preferred mic comes back, we route to it.\n")
+
+    try:
+        import sounddevice as sd
+        from talk_to_vibe.audio.recorder import _refresh_portaudio
+        _refresh_portaudio()
+        devices = sd.query_devices()
+    except Exception as exc:
+        print(f"   ⚠️  Could not query audio devices: {exc}")
+        print("   Skipping microphone preferences.")
+        return
+
+    inputs = [(i, d) for i, d in enumerate(devices) if d["max_input_channels"] > 0]
+    if not inputs:
+        print("   ⚠️  No input devices detected. Skipping.")
+        return
+
+    print("   Currently connected input devices:\n")
+    for n, (_idx, d) in enumerate(inputs, 1):
+        rate = int(d.get("default_samplerate", 0))
+        print(f"   {n:>2}) {d['name']}  (default {rate} Hz)")
+
+    if config.mic_preferences:
+        print(f"\n   Current preference order: {config.mic_preferences}")
+    else:
+        print("\n   No preferences saved yet (auto-pick currently in effect).")
+
+    print()
+    print("   Enter the device numbers in priority order (e.g. '3 1 7').")
+    print("   Or type 'clear' to remove preferences. Press Enter to keep current.")
+    raw = _input_safe("   Order: ")
+    if not raw:
+        print("   Keeping current preferences.")
+        return
+    if raw.lower() == "clear":
+        config.mic_preferences = []
+        print("   Cleared microphone preferences.")
+        return
+
+    parts = [p.strip() for p in raw.replace(",", " ").split() if p.strip()]
+    selected: list[str] = []
+    for token in parts:
+        try:
+            n = int(token)
+        except ValueError:
+            print(f"   ⚠️  Skipping non-numeric token: {token!r}")
+            continue
+        if not (1 <= n <= len(inputs)):
+            print(f"   ⚠️  Skipping out-of-range index: {n}")
+            continue
+        name = inputs[n - 1][1]["name"]
+        if name not in selected:
+            selected.append(name)
+
+    if not selected:
+        print("   No valid selections — leaving preferences unchanged.")
+        return
+
+    config.mic_preferences = selected
+    print("   Saved preference order:")
+    for i, name in enumerate(selected, 1):
+        print(f"     {i}. {name}")
 
 
 def _configure_auto_enter(config: AppConfig) -> None:

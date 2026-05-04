@@ -12,6 +12,8 @@ from talk_to_vibe.runtime_paths import APP_BUNDLE_NAME
 def _setup_hint() -> str:
     if sys.platform == "darwin":
         return f"Re-run the setup helper, or open {APP_BUNDLE_NAME} and choose Reconfigure..."
+    if sys.platform.startswith("linux"):
+        return "Run: ./setup_linux.sh   (or ./run_ttv.sh --setup to re-run the wizard)"
     return "Run: ./run_ttv.sh --setup"
 
 
@@ -32,12 +34,12 @@ def main():
         "--menubar",
         action="store_true",
         default=None,
-        help="Run as macOS menu bar app (default on macOS)",
+        help="Run as menu bar / tray app (default on macOS and Linux)",
     )
     parser.add_argument(
         "--terminal",
         action="store_true",
-        help="Run in terminal mode instead of menu bar",
+        help="Run in terminal mode instead of menu bar / tray",
     )
     args = parser.parse_args()
 
@@ -61,16 +63,35 @@ def main():
     ptt_key = args.key or config.ptt_key
     auto_enter = config.auto_enter
 
-    use_menubar = not args.terminal
-    if sys.platform != "darwin":
-        use_menubar = False
+    has_tray = sys.platform == "darwin" or sys.platform.startswith("linux")
+    use_tray = has_tray and not args.terminal
 
-    if use_menubar:
+    if use_tray and sys.platform == "darwin":
         from talk_to_vibe.menubar import TalkToVibeMenuBar
-        app = TalkToVibeMenuBar(stt=stt, ptt_key_name=ptt_key, auto_enter=auto_enter, prompt_file=config.prompt_file)
+        app = TalkToVibeMenuBar(
+            stt=stt,
+            ptt_key_name=ptt_key,
+            auto_enter=auto_enter,
+            prompt_file=config.prompt_file,
+            mic_preferences=config.mic_preferences,
+        )
+    elif use_tray and sys.platform.startswith("linux"):
+        from talk_to_vibe.tray import TalkToVibeTray
+        app = TalkToVibeTray(
+            stt=stt,
+            ptt_key_name=ptt_key,
+            auto_enter=auto_enter,
+            prompt_file=config.prompt_file,
+            mic_preferences=config.mic_preferences,
+        )
     else:
         from talk_to_vibe.app import TalkToVibe
-        app = TalkToVibe(stt=stt, ptt_key_name=ptt_key, auto_enter=auto_enter)
+        app = TalkToVibe(
+            stt=stt,
+            ptt_key_name=ptt_key,
+            auto_enter=auto_enter,
+            mic_preferences=config.mic_preferences,
+        )
 
     app.run()
 

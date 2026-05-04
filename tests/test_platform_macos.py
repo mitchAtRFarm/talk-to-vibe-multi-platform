@@ -1,3 +1,4 @@
+import sys
 from unittest.mock import patch, MagicMock
 import pytest
 
@@ -6,7 +7,10 @@ from talk_to_vibe.platforms.linux import LinuxPlatform
 from talk_to_vibe.platforms.windows import WindowsPlatform
 from talk_to_vibe.errors import PlatformNotSupportedError, PlatformError
 
+darwin_only = pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only test")
 
+
+@darwin_only
 class TestMacOSPlatform:
     def test_has_global_key_access(self):
         p = MacOSPlatform()
@@ -165,6 +169,7 @@ class TestMacOSPlatform:
             assert args[0] == "afplay"
 
 
+@darwin_only
 class TestMacOSParsePttChord:
     def test_single_key(self):
         p = MacOSPlatform()
@@ -207,6 +212,7 @@ class TestMacOSParsePttChord:
         assert result == frozenset({key_map["alt_r"]})
 
 
+@darwin_only
 class TestMacOSChordDisplayName:
     def test_single_key_display(self):
         p = MacOSPlatform()
@@ -226,6 +232,7 @@ class TestMacOSChordDisplayName:
         assert "F18" in result
 
 
+@darwin_only
 class TestMacOSIsModifierOnly:
     def test_single_modifier_is_modifier_only(self):
         p = MacOSPlatform()
@@ -242,29 +249,6 @@ class TestMacOSIsModifierOnly:
     def test_chord_all_modifiers(self):
         p = MacOSPlatform()
         assert p.is_modifier_only("ctrl+alt_r") is True
-
-
-class TestLinuxPlatform:
-    def test_all_methods_raise(self):
-        p = LinuxPlatform()
-        with pytest.raises(PlatformNotSupportedError):
-            p.get_key_map()
-        with pytest.raises(PlatformNotSupportedError):
-            p.get_key_display_names()
-        with pytest.raises(PlatformNotSupportedError):
-            p.get_default_ptt_key()
-        with pytest.raises(PlatformNotSupportedError):
-            p.parse_ptt_chord("alt_r")
-        with pytest.raises(PlatformNotSupportedError):
-            p.get_chord_display_name("alt_r")
-        with pytest.raises(PlatformNotSupportedError):
-            p.is_modifier_only("alt_r")
-        with pytest.raises(PlatformNotSupportedError):
-            p.paste_text("test")
-        with pytest.raises(PlatformNotSupportedError):
-            p.play_success_sound()
-        with pytest.raises(PlatformNotSupportedError):
-            p.get_permission_help()
 
 
 class TestWindowsPlatform:
