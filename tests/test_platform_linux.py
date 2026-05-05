@@ -37,6 +37,7 @@ class TestLinuxParseChord:
     def test_single_modifier(self):
         p = LinuxPlatform()
         result = p.parse_ptt_chord("alt_r")
+        # alt_r normalizes to alt so the chord matches either alt key
         assert result == frozenset({p.get_key_map()["alt"]})
 
     def test_modifier_plus_digit(self):
@@ -49,13 +50,8 @@ class TestLinuxParseChord:
         p = LinuxPlatform()
         result = p.parse_ptt_chord("ctrl+shift_l+f12")
         km = p.get_key_map()
+        # shift_l normalizes to shift
         assert result == frozenset({km["ctrl"], km["shift"], km["f12"]})
-
-    def test_side_specific_modifier_chord_normalizes_to_runtime_keys(self):
-        p = LinuxPlatform()
-        km = p.get_key_map()
-        result = p.parse_ptt_chord("ctrl+alt_r")
-        assert result == frozenset({km["ctrl"], km["alt"]})
 
     def test_unknown_key_raises(self):
         with pytest.raises(PlatformError, match="Unknown key"):
@@ -159,6 +155,26 @@ class TestLinuxPaste:
         assert type_calls, f"expected xdotool type call, got {mock_run.call_args_list}"
         assert "hello world" in type_calls[0].args[0]
 
+    def test_paste_xdotool_uses_safe_delay(self):
+        # Regression: --delay 1 caused receiving apps to drop characters
+        # (especially spaces). The value must be at least xdotool's default
+        # of 12ms to avoid producing run-on words like "ofthis".
+        p = LinuxPlatform()
+        which_results = {"xclip": "/usr/bin/xclip", "xdotool": "/usr/bin/xdotool"}
+        with patch(
+            "talk_to_vibe.platforms.linux.shutil.which",
+            side_effect=lambda name: which_results.get(name),
+        ), patch("talk_to_vibe.platforms.linux.subprocess.Popen"), \
+             patch("talk_to_vibe.platforms.linux.subprocess.run") as mock_run, \
+             patch("talk_to_vibe.platforms.linux.time"):
+            p.paste_text("hello world")
+        type_calls = [c for c in mock_run.call_args_list if c.args[0][:2] == ["xdotool", "type"]]
+        argv = type_calls[0].args[0]
+        delay_idx = argv.index("--delay") + 1
+        assert int(argv[delay_idx]) >= 12, (
+            f"xdotool --delay must be >= 12ms to avoid dropped chars, got {argv[delay_idx]}"
+        )
+
     def test_paste_auto_enter_presses_enter_via_xdotool(self):
         p = LinuxPlatform()
         which_results = {"xclip": "/usr/bin/xclip", "xdotool": "/usr/bin/xdotool"}
@@ -213,6 +229,172 @@ class TestLinuxPaste:
             p.paste_text("hello")
             mock_popen.assert_not_called()
             mock_ctrl.return_value.type.assert_called_once_with("hello")
+
+
+class TestLinuxTerminalDetection:
+    def _make_run_side_effect(self, wid="111149062", wm_class='"gnome-terminal-server", "Gnome-terminal-server"'):
+        def side_effect(cmd, **kwargs):
+            result = MagicMock()
+            if cmd[:2] == ["xdotool", "getactivewindow"]:
+                result.stdout = wid + "\n"
+            elif cmd[:2] == ["xprop", "-id"]:
+                result.stdout = f"WM_CLASS(STRING) = {wm_class}\n"
+            else:
+                result.stdout = ""
+            return result
+        return side_effect
+
+    def test_returns_false_when_xdotool_missing(self):
+        with patch("talk_to_vibe.platforms.linux.shutil.which", return_value=None):
+            assert LinuxPlatform()._active_window_is_terminal() is False
+
+    def test_returns_false_when_xprop_missing(self):
+        which = lambda name: "/usr/bin/xdotool" if name == "xdotool" else None
+        with patch("talk_to_vibe.platforms.linux.shutil.which", side_effect=which):
+            assert LinuxPlatform()._active_window_is_terminal() is False
+
+    def test_detects_gnome_terminal(self):
+        which = lambda name: f"/usr/bin/{name}" if name in ("xdotool", "xprop") else None
+        with patch("talk_to_vibe.platforms.linux.shutil.which", side_effect=which), \
+             patch("talk_to_vibe.platforms.linux.subprocess.run", side_effect=self._make_run_side_effect()):
+            assert LinuxPlatform()._active_window_is_terminal() is True
+
+    def test_detects_kitty(self):
+        which = lambda name: f"/usr/bin/{name}" if name in ("xdotool", "xprop") else None
+        with patch("talk_to_vibe.platforms.linux.shutil.which", side_effect=which), \
+             patch("talk_to_vibe.platforms.linux.subprocess.run",
+                   side_effect=self._make_run_side_effect(wm_class='"kitty", "kitty"')):
+            assert LinuxPlatform()._active_window_is_terminal() is True
+
+    def test_rejects_browser(self):
+        which = lambda name: f"/usr/bin/{name}" if name in ("xdotool", "xprop") else None
+        with patch("talk_to_vibe.platforms.linux.shutil.which", side_effect=which), \
+             patch("talk_to_vibe.platforms.linux.subprocess.run",
+                   side_effect=self._make_run_side_effect(wm_class='"firefox", "Firefox"')):
+            assert LinuxPlatform()._active_window_is_terminal() is False
+
+    def test_rejects_when_active_window_missing(self):
+        which = lambda name: f"/usr/bin/{name}" if name in ("xdotool", "xprop") else None
+        with patch("talk_to_vibe.platforms.linux.shutil.which", side_effect=which), \
+             patch("talk_to_vibe.platforms.linux.subprocess.run",
+                   side_effect=self._make_run_side_effect(wid="")):
+            assert LinuxPlatform()._active_window_is_terminal() is False
+
+
+class TestLinuxPasteStream:
+    @staticmethod
+    def _terminal_env():
+        which = lambda name: f"/usr/bin/{name}" if name in ("xdotool", "xprop", "xclip") else None
+        def run_side_effect(cmd, **kwargs):
+            result = MagicMock()
+            if cmd[:2] == ["xdotool", "getactivewindow"]:
+                result.stdout = "12345\n"
+            elif cmd[:2] == ["xprop", "-id"]:
+                result.stdout = 'WM_CLASS(STRING) = "gnome-terminal-server", "Gnome-terminal-server"\n'
+            else:
+                result.stdout = ""
+            return result
+        return which, run_side_effect
+
+    @staticmethod
+    def _gui_env():
+        which = lambda name: f"/usr/bin/{name}" if name in ("xdotool", "xprop", "xclip") else None
+        def run_side_effect(cmd, **kwargs):
+            result = MagicMock()
+            if cmd[:2] == ["xdotool", "getactivewindow"]:
+                result.stdout = "12345\n"
+            elif cmd[:2] == ["xprop", "-id"]:
+                result.stdout = 'WM_CLASS(STRING) = "firefox", "Firefox"\n'
+            else:
+                result.stdout = ""
+            return result
+        return which, run_side_effect
+
+    def test_terminal_target_uses_clipboard_paste_per_chunk(self):
+        which, run_side_effect = self._terminal_env()
+        with patch("talk_to_vibe.platforms.linux.shutil.which", side_effect=which), \
+             patch("talk_to_vibe.platforms.linux.subprocess.Popen") as mock_popen, \
+             patch("talk_to_vibe.platforms.linux.subprocess.run", side_effect=run_side_effect) as mock_run, \
+             patch("talk_to_vibe.platforms.linux.time"):
+            full = LinuxPlatform().paste_text_stream(["hello", "world"], auto_enter=False)
+        assert full == "hello world"
+        paste_calls = [c for c in mock_run.call_args_list
+                       if c.args[0][:2] == ["xdotool", "key"] and "ctrl+shift+v" in c.args[0]]
+        # One paste per chunk.
+        assert len(paste_calls) == 2, f"expected 2 ctrl+shift+v calls, got {paste_calls}"
+        type_calls = [c for c in mock_run.call_args_list if c.args[0][:2] == ["xdotool", "type"]]
+        assert not type_calls, f"unexpected xdotool type calls: {type_calls}"
+        # xclip must have been called for each chunk plus the final full-text update.
+        xclip_payloads = [c.args[0] for c in mock_popen.return_value.communicate.call_args_list]
+        assert len(mock_popen.call_args_list) >= 3
+
+    def test_gui_target_uses_xdotool_type_per_chunk(self):
+        which, run_side_effect = self._gui_env()
+        with patch("talk_to_vibe.platforms.linux.shutil.which", side_effect=which), \
+             patch("talk_to_vibe.platforms.linux.subprocess.Popen"), \
+             patch("talk_to_vibe.platforms.linux.subprocess.run", side_effect=run_side_effect) as mock_run, \
+             patch("talk_to_vibe.platforms.linux.time"):
+            full = LinuxPlatform().paste_text_stream(["hello", "world"], auto_enter=False)
+        assert full == "hello world"
+        type_calls = [c for c in mock_run.call_args_list if c.args[0][:2] == ["xdotool", "type"]]
+        assert len(type_calls) == 2, f"expected 2 xdotool type calls, got {type_calls}"
+        # First chunk has no leading space; second chunk is prefixed with one.
+        assert type_calls[0].args[0][-1] == "hello"
+        assert type_calls[1].args[0][-1] == " world"
+        paste_calls = [c for c in mock_run.call_args_list
+                       if c.args[0][:2] == ["xdotool", "key"] and "ctrl+shift+v" in c.args[0]]
+        assert not paste_calls
+
+    def test_auto_enter_fires_once_at_end(self):
+        which, run_side_effect = self._gui_env()
+        with patch("talk_to_vibe.platforms.linux.shutil.which", side_effect=which), \
+             patch("talk_to_vibe.platforms.linux.subprocess.Popen"), \
+             patch("talk_to_vibe.platforms.linux.subprocess.run", side_effect=run_side_effect) as mock_run, \
+             patch("talk_to_vibe.platforms.linux.time"):
+            LinuxPlatform().paste_text_stream(["alpha", "beta", "gamma"], auto_enter=True)
+        return_calls = [c for c in mock_run.call_args_list
+                        if c.args[0][:2] == ["xdotool", "key"] and "Return" in c.args[0]]
+        assert len(return_calls) == 1
+
+    def test_full_text_lands_on_clipboard_after_stream(self):
+        which, run_side_effect = self._gui_env()
+        with patch("talk_to_vibe.platforms.linux.shutil.which", side_effect=which), \
+             patch("talk_to_vibe.platforms.linux.subprocess.Popen") as mock_popen, \
+             patch("talk_to_vibe.platforms.linux.subprocess.run", side_effect=run_side_effect), \
+             patch("talk_to_vibe.platforms.linux.time"):
+            mock_proc = MagicMock()
+            mock_popen.return_value = mock_proc
+            LinuxPlatform().paste_text_stream(["hello", "world"], auto_enter=False)
+        # Last clipboard write contains the full joined text.
+        last_payload = mock_proc.communicate.call_args.args[0]
+        assert last_payload == b"hello world"
+
+    def test_empty_stream_does_not_paste(self):
+        which, run_side_effect = self._gui_env()
+        with patch("talk_to_vibe.platforms.linux.shutil.which", side_effect=which), \
+             patch("talk_to_vibe.platforms.linux.subprocess.Popen") as mock_popen, \
+             patch("talk_to_vibe.platforms.linux.subprocess.run", side_effect=run_side_effect) as mock_run, \
+             patch("talk_to_vibe.platforms.linux.time"):
+            full = LinuxPlatform().paste_text_stream([], auto_enter=True)
+        assert full == ""
+        type_calls = [c for c in mock_run.call_args_list if c.args[0][:2] == ["xdotool", "type"]]
+        assert not type_calls
+        return_calls = [c for c in mock_run.call_args_list
+                        if c.args[0][:2] == ["xdotool", "key"] and "Return" in c.args[0]]
+        assert not return_calls
+        mock_popen.assert_not_called()
+
+    def test_chunks_with_only_whitespace_skipped(self):
+        which, run_side_effect = self._gui_env()
+        with patch("talk_to_vibe.platforms.linux.shutil.which", side_effect=which), \
+             patch("talk_to_vibe.platforms.linux.subprocess.Popen"), \
+             patch("talk_to_vibe.platforms.linux.subprocess.run", side_effect=run_side_effect) as mock_run, \
+             patch("talk_to_vibe.platforms.linux.time"):
+            full = LinuxPlatform().paste_text_stream(["", "  ", "real"], auto_enter=False)
+        assert full == "real"
+        type_calls = [c for c in mock_run.call_args_list if c.args[0][:2] == ["xdotool", "type"]]
+        assert len(type_calls) == 1
+        assert type_calls[0].args[0][-1] == "real"
 
 
 class TestLinuxSuccessSound:

@@ -34,11 +34,13 @@ class LocalWhisperConfig:
     model_size: str = "large-v3-turbo"
     device: str = "auto"
     compute_type: str = "auto"
-    language: str = "en"
+    language: str = ""
     model_dir: str = ""
     cpu_threads: int = 0
     beam_size: int = 5
     vad_filter: bool = True
+    hints_file: str = ""
+    post_process: bool = True
 
 
 @dataclass

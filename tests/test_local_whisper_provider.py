@@ -13,7 +13,7 @@ class TestLocalWhisperProvider:
                 self.model_size = model_size
                 self.kwargs = kwargs
 
-            def transcribe(self, samples, language, beam_size, vad_filter):
+            def transcribe(self, samples, language, task, beam_size, vad_filter, **kwargs):
                 segments = [
                     types.SimpleNamespace(text="Hello"),
                     types.SimpleNamespace(text="world"),

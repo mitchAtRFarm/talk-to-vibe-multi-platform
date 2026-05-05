@@ -39,6 +39,8 @@ def create_provider(config: AppConfig) -> BaseSTTProvider:
                 cpu_threads=lw.cpu_threads,
                 beam_size=lw.beam_size,
                 vad_filter=lw.vad_filter,
+                hints_file=lw.hints_file,
+                post_process=lw.post_process,
             )
         except ImportError as exc:
             raise ProviderError(

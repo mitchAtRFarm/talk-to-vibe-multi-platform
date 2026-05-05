@@ -102,10 +102,25 @@ def run_wizard(config: AppConfig | None = None, force: bool = False) -> AppConfi
         if base_url:
             config.providers.openrouter.base_url = base_url
 
+    elif provider == "local_whisper":
+        lw = config.providers.local_whisper
+        model_size = _input_safe(f"   Model size (default: {lw.model_size}): ")
+        if model_size:
+            lw.model_size = model_size
+        device = _input_safe(f"   Device — auto, cuda, cpu (default: {lw.device}): ")
+        if device:
+            lw.device = device
+        compute = _input_safe(f"   Compute type — auto, float16, int8 (default: {lw.compute_type}): ")
+        if compute:
+            lw.compute_type = compute
+
     _configure_ptt_key(config)
     _configure_mic_preferences(config)
     _configure_auto_enter(config)
-    _configure_prompt_file(config)
+    if provider == "local_whisper":
+        _configure_local_whisper_output(config)
+    else:
+        _configure_prompt_file(config)
 
     save_config(config)
     print("   ✅ Saved to ~/.talktovibe/config.yaml\n")
@@ -293,3 +308,45 @@ def _configure_prompt_file(config: AppConfig) -> None:
     else:
         config.prompt_file = ""
         print("   Using default bundled prompt")
+
+
+def _configure_local_whisper_output(config: AppConfig) -> None:
+    lw = config.providers.local_whisper
+
+    print("\n🎙️  Local Whisper Output Quality\n")
+    print("   Talk to Vibe can improve raw Whisper output in two ways:\n")
+    print("   1) Decoder hints — a short text sample primes Whisper toward")
+    print("      technical vocabulary, correct casing, and punctuation style.")
+    print("      A coding-focused sample is bundled; you can supply your own.\n")
+    print("   2) Post-processing — a fast regex pass removes filler words")
+    print("      (um, uh, you know) and repeated-word self-corrections.\n")
+
+    print("   ── Decoder Hints ──")
+    current_hints = lw.hints_file or "(bundled coding sample)"
+    print(f"   Current hints file: {current_hints}\n")
+    hints_path = _input_safe("   Path to custom hints .md (Enter = use bundled sample): ")
+    if hints_path:
+        lw.hints_file = hints_path
+        print(f"   Custom hints file set: {hints_path}")
+    else:
+        lw.hints_file = ""
+        print("   Using bundled coding-vocabulary sample")
+
+    print("\n   ── Post-Processing ──")
+    current_pp = "ON" if lw.post_process else "OFF"
+    print(f"   Current: {current_pp}")
+    print("   1) ON  — strip filler words and self-corrections")
+    print("   2) OFF — pass Whisper output through unchanged\n")
+    while True:
+        choice = _input_safe(f"   Select [1-2] (Enter = keep {current_pp}): ")
+        if not choice:
+            break
+        if choice == "1":
+            lw.post_process = True
+            print("   Selected: ON")
+            break
+        if choice == "2":
+            lw.post_process = False
+            print("   Selected: OFF")
+            break
+        print("   ⚠️  Enter 1 or 2")

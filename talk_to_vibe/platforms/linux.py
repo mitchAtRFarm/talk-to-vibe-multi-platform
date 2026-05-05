@@ -1,7 +1,9 @@
 import os
+import re
 import shutil
 import subprocess
 import time
+from typing import Iterable
 
 from talk_to_vibe.platforms.base import BasePlatform
 from talk_to_vibe.errors import PlatformError
@@ -19,6 +21,36 @@ _CLIPBOARD_TOOLS = (
     ("xsel", ["xsel", "--clipboard", "--input"]),
     ("wl-copy", ["wl-copy"]),
 )
+
+# WM_CLASS values (lowercased) for terminal emulators where Ctrl+Shift+V
+# atomic clipboard paste is more reliable than per-character key injection.
+# xdotool type into TUIs (Claude Code, vim, etc.) intermittently drops space
+# characters; clipboard paste avoids the per-character timing entirely.
+_TERMINAL_WINDOW_CLASSES = frozenset({
+    "alacritty",
+    "eterm",
+    "foot",
+    "gnome-terminal",
+    "gnome-terminal-server",
+    "kgx",
+    "kitty",
+    "konsole",
+    "lxterminal",
+    "mate-terminal",
+    "org.wezfurlong.wezterm",
+    "rxvt",
+    "rxvt-unicode",
+    "sakura",
+    "st-256color",
+    "terminator",
+    "tilix",
+    "urxvt",
+    "wezterm",
+    "xfce4-terminal",
+    "xterm",
+})
+
+_WM_CLASS_RE = re.compile(r'"([^"]*)"')
 
 _SOUND_PLAYERS = (
     ("canberra-gtk-play", ["canberra-gtk-play", "-i", "complete"]),
@@ -167,52 +199,135 @@ class LinuxPlatform(BasePlatform):
         return f"{key!r} -> {normalized!r}"
 
     def paste_text(self, text: str, auto_enter: bool = False) -> None:
-        # Always populate the clipboard so the user can re-paste manually.
-        tool_name, command = self._select_clipboard_tool()
-        if tool_name:
-            try:
-                process = subprocess.Popen(command, stdin=subprocess.PIPE)
-                process.communicate(text.encode("utf-8"), timeout=2.0)
-            except Exception:
-                pass
+        if not text:
+            return
+        self.paste_text_stream([text], auto_enter=auto_enter)
 
-        # Inject the text by *typing* it, not pasting via shortcut. This:
-        #   - avoids bracketed-paste-mode wrapping issues in terminals
-        #     (which produced `^[[200~ ... ~` artifacts on some shells), and
-        #   - works identically in terminals, editors, browsers, and chat apps
-        #     because synthetic key events are universal.
-        if not self._type_text_via_xdotool(text, auto_enter):
-            self._type_text_via_pynput(text, auto_enter)
+    def paste_text_stream(self, chunks: Iterable[str], auto_enter: bool = False) -> str:
+        # Decide the strategy once per utterance so it can't flip mid-paste if
+        # focus briefly shifts. TUIs (Claude Code, vim, terminal apps) get an
+        # atomic clipboard paste because xdotool's per-character key injection
+        # drops characters (especially spaces) under their input load.
+        # GUI apps get xdotool type, which works identically across editors,
+        # browsers, and chat apps and does not depend on a paste shortcut.
+        via_clipboard_paste = self._active_window_is_terminal()
+        parts: list[str] = []
+        first = True
+        for chunk in chunks:
+            piece = chunk.strip() if chunk else ""
+            if not piece:
+                continue
+            to_send = piece if first else " " + piece
+            first = False
+            parts.append(piece)
+            self._paste_chunk(to_send, via_clipboard_paste)
 
-    def _type_text_via_xdotool(self, text: str, auto_enter: bool) -> bool:
+        full_text = " ".join(parts).strip()
+        # Always leave the full text on the clipboard so the user can re-paste
+        # manually. For multi-chunk TUI pastes this overwrites the per-chunk
+        # clipboard contents we used for ctrl+shift+v.
+        if full_text:
+            self._populate_clipboard(full_text)
+        if auto_enter and full_text:
+            self._press_enter()
+        return full_text
+
+    def _paste_chunk(self, text: str, via_clipboard_paste: bool) -> None:
+        if via_clipboard_paste and self._paste_chunk_via_clipboard(text):
+            return
+        if self._type_text_via_xdotool(text):
+            return
+        self._type_text_via_pynput(text)
+
+    def _paste_chunk_via_clipboard(self, text: str) -> bool:
         if shutil.which("xdotool") is None:
             return False
+        if not self._populate_clipboard(text):
+            return False
+        # Brief pause so the X server registers the new selection before the
+        # paste shortcut is fired.
+        time.sleep(0.03)
         try:
-            # --delay 1 keeps even very long pastes under a second; some apps
-            # drop chars at 0ms.  --clearmodifiers releases any modifiers the
-            # user may still have down (e.g. Ctrl from the PTT chord).
             subprocess.run(
-                ["xdotool", "type", "--delay", "1", "--clearmodifiers", "--", text],
-                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15.0,
+                ["xdotool", "key", "--clearmodifiers", "ctrl+shift+v"],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5.0,
             )
-            if auto_enter:
-                time.sleep(0.05)
-                subprocess.run(
-                    ["xdotool", "key", "--clearmodifiers", "Return"],
-                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2.0,
-                )
         except Exception:
             return False
         return True
 
-    def _type_text_via_pynput(self, text: str, auto_enter: bool) -> None:
-        from pynput.keyboard import Controller, Key
-        kb = Controller()
-        kb.type(text)
-        if auto_enter:
-            time.sleep(0.05)
+    def _type_text_via_xdotool(self, text: str) -> bool:
+        if shutil.which("xdotool") is None:
+            return False
+        try:
+            # --delay 12 matches xdotool's documented safe default and clears
+            # any modifiers the user may still have down (e.g. Ctrl from the
+            # PTT chord) before injection.
+            subprocess.run(
+                ["xdotool", "type", "--delay", "12", "--clearmodifiers", "--", text],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30.0,
+            )
+        except Exception:
+            return False
+        return True
+
+    def _type_text_via_pynput(self, text: str) -> None:
+        from pynput.keyboard import Controller
+        Controller().type(text)
+
+    def _press_enter(self) -> None:
+        time.sleep(0.05)
+        if shutil.which("xdotool") is not None:
+            try:
+                subprocess.run(
+                    ["xdotool", "key", "--clearmodifiers", "Return"],
+                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2.0,
+                )
+                return
+            except Exception:
+                pass
+        try:
+            from pynput.keyboard import Controller, Key
+            kb = Controller()
             kb.press(Key.enter)
             kb.release(Key.enter)
+        except Exception:
+            pass
+
+    def _populate_clipboard(self, text: str) -> bool:
+        tool_name, command = self._select_clipboard_tool()
+        if not tool_name:
+            return False
+        try:
+            process = subprocess.Popen(command, stdin=subprocess.PIPE)
+            process.communicate(text.encode("utf-8"), timeout=2.0)
+            return True
+        except Exception:
+            return False
+
+    def _active_window_is_terminal(self) -> bool:
+        # Used to decide whether to paste via Ctrl+Shift+V (TUIs) or xdotool
+        # type (GUIs). Defaults to False on any failure so we keep the
+        # universally-compatible typing path.
+        if shutil.which("xdotool") is None or shutil.which("xprop") is None:
+            return False
+        try:
+            wid_result = subprocess.run(
+                ["xdotool", "getactivewindow"],
+                capture_output=True, text=True, timeout=2.0,
+            )
+            wid = (wid_result.stdout or "").strip()
+            if not wid or not wid.lstrip("-").isdigit():
+                return False
+            cls_result = subprocess.run(
+                ["xprop", "-id", wid, "WM_CLASS"],
+                capture_output=True, text=True, timeout=2.0,
+            )
+            stdout = cls_result.stdout or ""
+            names = [m.lower() for m in _WM_CLASS_RE.findall(stdout)]
+            return any(name in _TERMINAL_WINDOW_CLASSES for name in names)
+        except Exception:
+            return False
 
     def _select_clipboard_tool(self) -> tuple[str | None, list[str] | None]:
         for name, command in _CLIPBOARD_TOOLS:

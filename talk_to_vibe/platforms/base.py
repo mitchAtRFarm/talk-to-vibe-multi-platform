@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Iterable
 
 
 class BasePlatform(ABC):
@@ -29,6 +30,22 @@ class BasePlatform(ABC):
     @abstractmethod
     def paste_text(self, text: str, auto_enter: bool = False) -> None:
         ...
+
+    def paste_text_stream(self, chunks: Iterable[str], auto_enter: bool = False) -> str:
+        """Paste a stream of text pieces, returning the joined full text.
+
+        Default implementation buffers everything and calls paste_text once.
+        Platforms that benefit from progressive feedback should override this.
+        """
+        parts: list[str] = []
+        for chunk in chunks:
+            piece = chunk.strip() if chunk else ""
+            if piece:
+                parts.append(piece)
+        full_text = " ".join(parts).strip()
+        if full_text:
+            self.paste_text(full_text, auto_enter=auto_enter)
+        return full_text
 
     @abstractmethod
     def play_success_sound(self) -> None:
