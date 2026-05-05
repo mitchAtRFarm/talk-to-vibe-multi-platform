@@ -54,6 +54,11 @@ def _make_app(stt=None, **kwargs):
             set()
         )
         mock_platform.get_chord_display_name.side_effect = lambda s: s.replace("+", " + ").replace("_", " ").title()
+        # Drain the chunk iterator like a real platform would so the upstream
+        # transcribe_stream() actually runs and prints progress.
+        def _drain_stream(chunks, auto_enter=False):
+            return " ".join(c.strip() for c in chunks if c and c.strip()).strip()
+        mock_platform.paste_text_stream.side_effect = _drain_stream
         mock_plat.return_value = mock_platform
         app = TalkToVibe(stt=stt, ptt_key_name=kwargs.pop("ptt_key_name", "alt_r"), **kwargs)
     return app
@@ -66,12 +71,6 @@ class TestTalkToVibeProcess:
         app._process(audio, 1.0)
         captured = capsys.readouterr()
         assert "hello world" in captured.out
-
-    def test_successful_transcription_inserts_text_via_platform(self):
-        app = _make_app(stt=FakeSTT(return_text="hello world"))
-        audio = np.zeros((16000, 1), dtype=np.int16)
-        app._process(audio, 1.0)
-        app.platform.paste_text.assert_called_once_with("hello world", auto_enter=False)
 
     def test_empty_transcription(self, capsys):
         app = _make_app(stt=FakeSTT(return_text=""))

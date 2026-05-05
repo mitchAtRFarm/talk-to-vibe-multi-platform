@@ -130,12 +130,18 @@ def _config_to_yaml(config: AppConfig) -> str:
         lines.append(f"    cpu_threads: {_yaml_val(lw.cpu_threads)}")
         lines.append(f"    beam_size: {_yaml_val(lw.beam_size)}")
         lines.append(f"    vad_filter: {_yaml_val(lw.vad_filter)}")
+        lines.append(f"    post_process: {_yaml_val(lw.post_process)}")
+        if lw.hints_file:
+            lines.append(f"    hints_file: {_yaml_val(lw.hints_file)}")
+        else:
+            lines.append(f"    # hints_file: ~/my_hints.md  # Custom vocab/style sample for Whisper decoder biasing")
     else:
         lines.append(f"    # model_size: large-v3-turbo")
         lines.append(f"    # device: auto         # auto, cuda, cpu")
         lines.append(f"    # compute_type: auto   # auto, float16, int8_float16, int8")
-        lines.append(f"    # language: en")
+        lines.append(f"    # language: \"\"  # empty = auto-detect (recommended)")
         lines.append(f"    # vad_filter: true")
+        lines.append(f"    # post_process: true   # Remove filler words (um, uh, you know, etc.)")
     lines.append("")
     return "\n".join(lines) + "\n"
 

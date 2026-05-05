@@ -103,15 +103,27 @@ class TalkToVibe:
     def _process(self, audio_data, duration):
         try:
             start = time.time()
-            text = self.stt.transcribe(audio_data)
-            elapsed = time.time() - start
+            print("  📝 ", end="", flush=True)
 
-            if text:
-                print(f'  📝 "{text}" ({elapsed:.1f}s)')
-                self.platform.paste_text(text, auto_enter=self.auto_enter)
+            def stream_with_echo():
+                first = True
+                for chunk in self.stt.transcribe_stream(audio_data):
+                    piece = chunk.strip() if chunk else ""
+                    if not piece:
+                        continue
+                    print(("" if first else " ") + piece, end="", flush=True)
+                    first = False
+                    yield piece
+
+            full_text = self.platform.paste_text_stream(
+                stream_with_echo(), auto_enter=self.auto_enter
+            )
+            elapsed = time.time() - start
+            if full_text:
+                print(f"  ({elapsed:.1f}s)")
                 self.platform.play_success_sound()
             else:
-                print("  (empty result)")
+                print("(empty result)")
         except Exception as e:
             print(f"\n  ❌ Error: {e}")
         finally:
@@ -132,7 +144,7 @@ class TalkToVibe:
         print(f"  Model:      {self.stt.model}")
         print(f"  Auto-Enter: {'ON' if self.auto_enter else 'OFF'}")
         print(f"  Press chord once to start recording, press again to transcribe.")
-        print(f"  Result is auto-typed into current app.")
+        print(f"  Result is auto-pasted to current app.")
         print(f"  Press Ctrl+C to quit.")
         print("━" * 50)
         print()

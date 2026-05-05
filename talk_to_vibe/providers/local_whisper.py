@@ -2,10 +2,12 @@ import ctypes
 import glob
 import os
 import threading
+from typing import Iterator
 
 import numpy as np
 
 from talk_to_vibe.providers.base import BaseSTTProvider
+from talk_to_vibe.providers.prompts import load_prompt, load_custom_prompt
 
 _CUDA_PRELOADED = False
 _CUDA_PRELOAD_LOCK = threading.Lock()
@@ -86,6 +88,21 @@ def _resolve_device_and_compute(device: str, compute_type: str) -> tuple[str, st
     return chosen_device, chosen_compute
 
 
+def _load_hints(hints_file: str) -> str:
+    """Load the initial_prompt text for Whisper decoder biasing.
+
+    Uses the custom file when specified, otherwise falls back to the bundled
+    whisper_hints.md sample. Returns empty string on any read failure so the
+    caller can skip the parameter entirely without crashing.
+    """
+    try:
+        if hints_file:
+            return load_custom_prompt(hints_file)
+        return load_prompt("whisper_hints")
+    except FileNotFoundError:
+        return ""
+
+
 class LocalWhisperProvider(BaseSTTProvider):
     provider_name = "Local Whisper (faster-whisper)"
 
@@ -94,11 +111,13 @@ class LocalWhisperProvider(BaseSTTProvider):
         model_size: str,
         device: str = "auto",
         compute_type: str = "auto",
-        language: str = "en",
+        language: str = "",
         model_dir: str = "",
         cpu_threads: int = 0,
         beam_size: int = 5,
         vad_filter: bool = True,
+        hints_file: str = "",
+        post_process: bool = True,
     ):
         from faster_whisper import WhisperModel
 
@@ -107,6 +126,8 @@ class LocalWhisperProvider(BaseSTTProvider):
         self.language = language or None
         self.beam_size = beam_size
         self.vad_filter = vad_filter
+        self.post_process = post_process
+        self.initial_prompt = _load_hints(hints_file)
 
         resolved_device, resolved_compute = _resolve_device_and_compute(device, compute_type)
         self.device = resolved_device
@@ -124,8 +145,11 @@ class LocalWhisperProvider(BaseSTTProvider):
         self._whisper = WhisperModel(model_size, **kwargs)
 
     def transcribe(self, audio_data: np.ndarray) -> str:
+        return " ".join(self.transcribe_stream(audio_data)).strip()
+
+    def transcribe_stream(self, audio_data: np.ndarray) -> Iterator[str]:
         if audio_data is None or len(audio_data) == 0:
-            return ""
+            return
 
         if audio_data.dtype == np.int16:
             samples = audio_data.astype(np.float32) / 32768.0
@@ -137,18 +161,25 @@ class LocalWhisperProvider(BaseSTTProvider):
         if samples.ndim > 1:
             samples = samples.mean(axis=1).astype(np.float32)
 
-        segments, _info = self._whisper.transcribe(
-            samples,
-            language=self.language,
-            beam_size=self.beam_size,
-            vad_filter=self.vad_filter,
-        )
-        parts = []
+        transcribe_kwargs: dict = {
+            "language": self.language,
+            "task": "transcribe",
+            "beam_size": self.beam_size,
+            "vad_filter": self.vad_filter,
+        }
+        if self.initial_prompt:
+            transcribe_kwargs["initial_prompt"] = self.initial_prompt
+
+        segments, _info = self._whisper.transcribe(samples, **transcribe_kwargs)
         for seg in segments:
-            text = (seg.text or "").strip()
-            if text:
-                parts.append(text)
-        return " ".join(parts)
+            piece = seg.text.strip()
+            if not piece:
+                continue
+            if self.post_process:
+                from talk_to_vibe.providers.post_process import clean_transcript
+                piece = clean_transcript(piece)
+            if piece:
+                yield piece
 
 
 __all__ = [
