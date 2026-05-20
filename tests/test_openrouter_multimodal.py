@@ -66,6 +66,16 @@ class TestBuildPayload:
         payload = p._build_payload("fake_b64")
         assert payload["model"] == "google/gemini-2.5-flash"
 
+    def test_service_tier_in_payload_when_configured(self):
+        p = _make_provider(service_tier="priority")
+        payload = p._build_payload("fake_b64")
+        assert payload["service_tier"] == "priority"
+
+    def test_service_tier_omitted_when_unset(self):
+        p = _make_provider(service_tier="")
+        payload = p._build_payload("fake_b64")
+        assert "service_tier" not in payload
+
     def test_custom_prompt_file_in_payload(self, tmp_path):
         custom = tmp_path / "custom.md"
         custom.write_text("My custom prompt\n")
@@ -191,7 +201,7 @@ class TestParseResponse:
 
 class TestTranscribeIntegration:
     def test_transcribe_builds_correct_request(self, monkeypatch):
-        p = _make_provider(api_key="sk-or-testkey123")
+        p = _make_provider(api_key="sk-or-testkey123", service_tier="priority")
         audio = _make_audio_data()
 
         captured_payload = {}
@@ -222,6 +232,7 @@ class TestTranscribeIntegration:
 
         payload = captured_payload["json"]
         assert payload["model"] == DEFAULT_MODEL
+        assert payload["service_tier"] == "priority"
         audio_content = payload["messages"][0]["content"][1]
         assert audio_content["type"] == "input_audio"
         assert audio_content["input_audio"]["format"] == "wav"

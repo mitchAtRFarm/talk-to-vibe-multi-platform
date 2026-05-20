@@ -112,10 +112,12 @@ def _config_to_yaml(config: AppConfig) -> str:
         lines.append(f"    api_key: {_yaml_val(config.providers.openrouter.api_key)}")
         lines.append(f"    model: {_yaml_val(config.providers.openrouter.model)}")
         lines.append(f"    base_url: {_yaml_val(config.providers.openrouter.base_url)}")
+        lines.append(f"    service_tier: {_yaml_val(config.providers.openrouter.service_tier)}")
     else:
         lines.append(f"    # api_key: sk-or-...")
         lines.append(f"    # model: google/gemini-3.1-flash-lite-preview")
         lines.append(f"    # base_url: https://openrouter.ai/api/v1/chat/completions")
+        lines.append(f"    # service_tier: priority   # optional: flex or priority")
     lines.append("  local_whisper:")
     if config.provider == "local_whisper":
         lw = config.providers.local_whisper

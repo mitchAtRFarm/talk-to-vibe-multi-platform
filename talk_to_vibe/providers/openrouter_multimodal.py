@@ -12,11 +12,12 @@ from talk_to_vibe.providers.prompts import load_prompt, load_custom_prompt
 class OpenRouterMultimodalProvider(BaseSTTProvider):
     provider_name = "OpenRouter"
 
-    def __init__(self, api_key: str, model: str, base_url: str, prompt_file: str = ""):
+    def __init__(self, api_key: str, model: str, base_url: str, prompt_file: str = "", service_tier: str = ""):
         self.api_key = api_key
         self.model = model
         self.base_url = base_url
         self.prompt_file = prompt_file
+        self.service_tier = service_tier
 
     def transcribe(self, audio_data: np.ndarray) -> str:
         wav_bytes = audio_to_wav_bytes(audio_data)
@@ -32,7 +33,7 @@ class OpenRouterMultimodalProvider(BaseSTTProvider):
         return load_prompt("transcription")
 
     def _build_payload(self, b64_audio: str) -> dict:
-        return {
+        payload = {
             "model": self.model,
             "messages": [
                 {
@@ -51,6 +52,9 @@ class OpenRouterMultimodalProvider(BaseSTTProvider):
             ],
             "temperature": 0,
         }
+        if self.service_tier:
+            payload["service_tier"] = self.service_tier
+        return payload
 
     def _send_request(self, payload: dict) -> httpx.Response:
         headers = {

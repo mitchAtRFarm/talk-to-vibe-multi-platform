@@ -75,6 +75,7 @@ def create_provider(config: AppConfig) -> BaseSTTProvider:
             model=config.providers.openrouter.model,
             base_url=config.providers.openrouter.base_url,
             prompt_file=config.prompt_file,
+            service_tier=config.providers.openrouter.service_tier,
         )
 
     raise ProviderError(f"Unhandled provider: {provider_name}")

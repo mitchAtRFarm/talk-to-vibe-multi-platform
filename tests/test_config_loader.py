@@ -59,6 +59,13 @@ class TestAppConfigValidation:
         cfg = AppConfig(provider="openrouter", providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-test")))
         assert cfg.validate() == []
 
+    def test_valid_openrouter_priority_service_tier(self):
+        cfg = AppConfig(
+            provider="openrouter",
+            providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-test", service_tier="priority")),
+        )
+        assert cfg.validate() == []
+
     def test_missing_groq_api_key(self):
         cfg = AppConfig(provider="groq")
         errors = cfg.validate()
@@ -94,6 +101,14 @@ class TestAppConfigValidation:
         errors = cfg.validate()
         assert any("OpenRouter base URL" in e for e in errors)
 
+    def test_invalid_openrouter_service_tier(self):
+        cfg = AppConfig(
+            provider="openrouter",
+            providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-test", service_tier="fastest")),
+        )
+        errors = cfg.validate()
+        assert any("service_tier" in e for e in errors)
+
 
 class TestLoadConfig:
     def test_load_missing_file_returns_defaults(self, tmp_path):
@@ -117,6 +132,22 @@ class TestLoadConfig:
         assert cfg.ptt_key == "f19"
         assert cfg.auto_enter is True
         assert cfg.providers.openrouter.api_key == "sk-or-test123"
+
+    def test_load_openrouter_service_tier(self, tmp_path):
+        p = tmp_path / "config.yaml"
+        p.write_text(yaml.dump({
+            "provider": "openrouter",
+            "providers": {
+                "openrouter": {
+                    "api_key": "sk-or-test123",
+                    "model": "google/gemini-3.1-flash-lite-preview",
+                    "base_url": "https://openrouter.ai/api/v1/chat/completions",
+                    "service_tier": "priority",
+                },
+            },
+        }))
+        cfg = load_config(p)
+        assert cfg.providers.openrouter.service_tier == "priority"
 
     def test_load_prompt_file(self, tmp_path):
         p = tmp_path / "config.yaml"
@@ -223,7 +254,7 @@ class TestSaveConfig:
         p = tmp_path / "config.yaml"
         cfg = AppConfig(
             provider="openrouter",
-            providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-real")),
+            providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-real", service_tier="priority")),
         )
         save_config(cfg, path=p)
         content = p.read_text()
@@ -235,6 +266,7 @@ class TestSaveConfig:
             if openrouter_section and "api_key:" in line and not line.strip().startswith("#"):
                 assert "sk-or-real" in line
                 break
+        assert "service_tier: priority" in content
 
 
 class TestConfigToYaml:
@@ -250,6 +282,14 @@ class TestConfigToYaml:
         cfg = AppConfig(prompt_file="/path/to/prompt.md")
         result = _config_to_yaml(cfg)
         assert "prompt_file: /path/to/prompt.md" in result
+
+    def test_includes_openrouter_service_tier(self):
+        cfg = AppConfig(
+            provider="openrouter",
+            providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-test", service_tier="priority")),
+        )
+        result = _config_to_yaml(cfg)
+        assert "service_tier: priority" in result
 
     def test_commented_prompt_file_when_empty(self):
         cfg = AppConfig(prompt_file="")

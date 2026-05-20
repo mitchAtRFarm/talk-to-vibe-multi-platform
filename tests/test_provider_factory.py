@@ -39,6 +39,7 @@ class TestCreateProvider:
         assert p.provider_name == "OpenRouter"
         assert p.model == "google/gemini-3.1-flash-lite-preview"
         assert p.base_url == "https://openrouter.ai/api/v1/chat/completions"
+        assert p.service_tier == ""
 
     def test_unknown_provider_raises(self):
         cfg = AppConfig(provider="bogus")
@@ -76,3 +77,8 @@ class TestCreateProvider:
         cfg = AppConfig(provider="openrouter", providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-test", base_url="https://custom.example.com/v1/chat/completions")))
         p = create_provider(cfg)
         assert p.base_url == "https://custom.example.com/v1/chat/completions"
+
+    def test_openrouter_custom_service_tier(self):
+        cfg = AppConfig(provider="openrouter", providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-test", service_tier="priority")))
+        p = create_provider(cfg)
+        assert p.service_tier == "priority"

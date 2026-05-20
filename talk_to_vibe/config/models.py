@@ -3,6 +3,9 @@ from dataclasses import dataclass, field
 from talk_to_vibe.config.constants import DEFAULT_PROVIDER, DEFAULT_PTT_KEY
 
 
+OPENROUTER_SERVICE_TIERS = ("", "flex", "priority")
+
+
 @dataclass
 class GroqConfig:
     api_key: str = ""
@@ -27,6 +30,7 @@ class OpenRouterConfig:
     api_key: str = ""
     model: str = "google/gemini-3.1-flash-lite-preview"
     base_url: str = "https://openrouter.ai/api/v1/chat/completions"
+    service_tier: str = ""
 
 
 @dataclass
@@ -87,6 +91,10 @@ class AppConfig:
                 errors.append("OpenRouter model is required when provider is 'openrouter'")
             if not self.providers.openrouter.base_url:
                 errors.append("OpenRouter base URL is required when provider is 'openrouter'")
+            if self.providers.openrouter.service_tier not in OPENROUTER_SERVICE_TIERS:
+                errors.append(
+                    "OpenRouter service_tier must be empty, 'flex', or 'priority'"
+                )
         if self.provider == "local_whisper":
             if not self.providers.local_whisper.model_size:
                 errors.append("Local Whisper model_size is required when provider is 'local_whisper'")

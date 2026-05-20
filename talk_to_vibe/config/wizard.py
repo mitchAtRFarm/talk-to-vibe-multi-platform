@@ -101,6 +101,22 @@ def run_wizard(config: AppConfig | None = None, force: bool = False) -> AppConfi
         base_url = _input_safe(f"   Base URL (default: {config.providers.openrouter.base_url}): ")
         if base_url:
             config.providers.openrouter.base_url = base_url
+        while True:
+            print("   Service tier: 1) default  2) flex  3) priority")
+            current_tier = config.providers.openrouter.service_tier or "default"
+            tier_choice = _input_safe(f"   Select service tier [1-3] (Enter = keep {current_tier}): ")
+            if not tier_choice:
+                break
+            if tier_choice == "1":
+                config.providers.openrouter.service_tier = ""
+                break
+            if tier_choice == "2":
+                config.providers.openrouter.service_tier = "flex"
+                break
+            if tier_choice == "3":
+                config.providers.openrouter.service_tier = "priority"
+                break
+            print("   ⚠️  Enter 1, 2, or 3")
 
     elif provider == "local_whisper":
         lw = config.providers.local_whisper
