@@ -11,7 +11,7 @@ talk_to_vibe/
   config/      — YAML config models, loader, wizard
   audio/       — microphone recording, WAV helpers
   providers/   — STT backends (openrouter_whisper, openai, openai_compatible, openrouter)
-  providers/prompts/ — Bundled .md prompt files and loader (transcription.md)
+  providers/prompts/ — Bundled .md files: transcription.md (multimodal prompt), whisper_hints.md (decoder vocabulary)
   platforms/   — OS-specific behavior (macOS + Linux active, Windows stub)
   app.py       — main app loop (terminal mode)
   menubar.py   — rumps menu bar app (macOS)
@@ -85,3 +85,4 @@ There are two distinct provider types in this codebase. They use different API s
 - Linux requires an X11 session — Wayland blocks pynput's global key listener. The tray detects this and surfaces a notify-send warning.
 - Transcription prompts live in `providers/prompts/` as `.md` files — `load_prompt(name)` loads a bundled prompt, `load_custom_prompt(path)` loads a user-supplied one
 - `prompt_file` config field overrides the bundled transcription prompt with a custom `.md` file path; empty string means use the bundled prompt
+- Decoder hints (`hints_file`) are vocabulary lists used to bias Whisper toward correct spelling of domain terms. Do not include full sentences, file paths, or CLI commands — these cause hallucination when audio is unclear.

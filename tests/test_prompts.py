@@ -37,6 +37,15 @@ class TestLoadPrompt:
         prompt_path = resources.files("talk_to_vibe.providers.prompts").joinpath("transcription.md")
         assert prompt_path.is_file()
 
+    def test_whisper_hints_is_vocabulary_not_sentences(self):
+        result = load_prompt("whisper_hints")
+        assert isinstance(result, str)
+        assert len(result) > 0
+        assert "." not in result, "whisper_hints should not contain full sentences"
+        assert "/" not in result, "whisper_hints should not contain file paths"
+        assert "npm install" not in result, "whisper_hints should not contain CLI commands"
+        assert "git commit" not in result, "whisper_hints should not contain CLI commands"
+
 
 class TestLoadCustomPrompt:
     def test_loads_custom_prompt(self, tmp_path):
