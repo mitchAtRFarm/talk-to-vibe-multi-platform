@@ -86,8 +86,8 @@ class TestLocalWhisperRoundtrip:
 
     def test_inactive_local_whisper_section_is_commented(self, tmp_path):
         p = tmp_path / "config.yaml"
-        cfg = AppConfig(provider="groq")
-        cfg.providers.groq.api_key = "gsk_test"
+        cfg = AppConfig(provider="openrouter_whisper")
+        cfg.providers.openrouter_whisper.api_key = "sk-or-test"
         save_config(cfg, path=p)
         content = p.read_text()
         assert "# model_size: large-v3-turbo" in content

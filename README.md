@@ -60,7 +60,7 @@ TalkToVibe supports purpose-built transcription APIs, configurable multimodal au
 
 | Provider | Type | Default Model | Where It Runs | Notes |
 |----------|------|---------------|---------------|-------|
-| **Groq** | Whisper transcription | `whisper-large-v3-turbo` | Cloud | Fast `/audio/transcriptions` provider |
+| **OpenRouter Whisper** | Whisper transcription | `openai/whisper-large-v3-turbo` | Cloud | OpenRouter `/audio/transcriptions` with Whisper hints + cleanup |
 | **OpenAI** | Whisper transcription | `whisper-1` | Cloud | OpenAI `/audio/transcriptions` |
 | **OpenAI-Compatible** | Whisper transcription | `whisper-1` | Your endpoint | Self-hosted or compatible OpenAI-style API |
 | **OpenRouter** | Multimodal chat + audio | `google/gemini-3.1-flash-lite-preview` | Cloud by default | Uses a configurable `/chat/completions` endpoint with `input_audio`; OpenRouter is just the default wiring |
@@ -68,7 +68,7 @@ TalkToVibe supports purpose-built transcription APIs, configurable multimodal au
 
 ### Whisper Transcription vs Multimodal Audio
 
-**Whisper-style providers** (`groq`, `openai`, `openai_compatible`) upload a WAV file to `/audio/transcriptions` and return a transcript directly. They are the simplest choice for pure dictation.
+**Whisper-style providers** (`openrouter_whisper`, `openai`, `openai_compatible`) send audio to a transcription endpoint and return a transcript directly. They are the simplest choice for pure dictation.
 
 **The `openrouter` provider path** sends base64-encoded audio to a chat-completions endpoint using a text prompt plus `input_audio`. The default config points at OpenRouter, but the `base_url` is configurable, so you can adapt it to another compatible endpoint if it accepts the same payload shape.
 
@@ -269,7 +269,7 @@ PTT chord -> microphone -> transcription provider -> transcript -> focused app
 talk_to_vibe/
   config/      - YAML config models, loader, wizard
   audio/       - microphone recording, WAV helpers
-  providers/   - STT backends (groq, openai, openai_compatible, openrouter, local_whisper)
+  providers/   - STT backends (openrouter_whisper, openai, openai_compatible, openrouter, local_whisper)
   providers/prompts/ - bundled transcription prompts and loader
   platforms/   - OS-specific behavior (macOS + Linux active, Windows stub)
   app.py       - terminal-mode app loop
@@ -285,7 +285,7 @@ tests/         - unit tests
 Config is stored at `~/.talktovibe/config.yaml` with mode `600`.
 
 ```yaml
-provider: openrouter
+provider: openrouter_whisper
 ptt_key: ctrl+9
 auto_enter: false
 prompt_file: ""
@@ -294,9 +294,14 @@ mic_preferences:
   - "NexiGo"
 
 providers:
-  groq:
-    api_key: gsk_...
-    model: whisper-large-v3-turbo
+  openrouter_whisper:
+    api_key: sk-or-...
+    model: openai/whisper-large-v3-turbo
+    base_url: https://openrouter.ai/api/v1/audio/transcriptions
+    language: en
+    post_process: true
+    temperature: 0
+    hint_provider_slug: groq
   openai:
     api_key: sk-...
     model: whisper-1
@@ -321,6 +326,7 @@ providers:
 Notes:
 
 - `prompt_file` only affects the multimodal chat-completions provider path
+- `openrouter_whisper` reuses the bundled Whisper hints file and the same local cleanup pass used by `local_whisper`
 - The provider named `openrouter` is really a configurable chat-completions + `input_audio` integration; OpenRouter is the default endpoint, not a hard requirement
 - `mic_preferences` is a priority-ordered list of device-name substrings; the first available match wins
 - `local_whisper.device` supports `auto`, `cuda`, and `cpu`

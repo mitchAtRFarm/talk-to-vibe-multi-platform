@@ -37,7 +37,7 @@ The product needs to support both workflows cleanly.
 
 Examples:
 
-- On a low-resource machine, a user may want `Fast` to use xAI STT or Groq.
+- On a low-resource machine, a user may want `Fast` to use OpenRouter Whisper.
 - On the same machine, the same user may want `Polished` to use Gemini via OpenRouter for cleaner dictation.
 - On a capable machine, `Fast` may use local Whisper while `Polished` uses Gemini.
 

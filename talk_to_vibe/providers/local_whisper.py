@@ -7,7 +7,7 @@ from typing import Iterator
 import numpy as np
 
 from talk_to_vibe.providers.base import BaseSTTProvider
-from talk_to_vibe.providers.prompts import load_prompt, load_custom_prompt
+from talk_to_vibe.providers.whisper_common import load_whisper_hints
 
 _CUDA_PRELOADED = False
 _CUDA_PRELOAD_LOCK = threading.Lock()
@@ -88,21 +88,6 @@ def _resolve_device_and_compute(device: str, compute_type: str) -> tuple[str, st
     return chosen_device, chosen_compute
 
 
-def _load_hints(hints_file: str) -> str:
-    """Load the initial_prompt text for Whisper decoder biasing.
-
-    Uses the custom file when specified, otherwise falls back to the bundled
-    whisper_hints.md sample. Returns empty string on any read failure so the
-    caller can skip the parameter entirely without crashing.
-    """
-    try:
-        if hints_file:
-            return load_custom_prompt(hints_file)
-        return load_prompt("whisper_hints")
-    except FileNotFoundError:
-        return ""
-
-
 class LocalWhisperProvider(BaseSTTProvider):
     provider_name = "Local Whisper (faster-whisper)"
 
@@ -127,7 +112,7 @@ class LocalWhisperProvider(BaseSTTProvider):
         self.beam_size = beam_size
         self.vad_filter = vad_filter
         self.post_process = post_process
-        self.initial_prompt = _load_hints(hints_file)
+        self.initial_prompt = load_whisper_hints(hints_file)
 
         resolved_device, resolved_compute = _resolve_device_and_compute(device, compute_type)
         self.device = resolved_device

@@ -1,5 +1,5 @@
-import pytest
 import numpy as np
+import pytest
 
 from talk_to_vibe.providers.openai_compatible import OpenAICompatibleProvider
 
@@ -30,16 +30,25 @@ class TestOpenAICompatibleProvider:
             OpenAICompatibleProvider(base_url="http://localhost:8000/v1", api_key="", model="whisper-1")
         assert "No API key configured for OpenAI-Compatible provider" in caplog.text
 
-    def test_transcribe_calls_sdk(self, monkeypatch):
+    def test_transcribe_calls_sdk_with_prompt_and_language(self, monkeypatch):
         audio = np.zeros((16000, 1), dtype=np.int16)
-        p = OpenAICompatibleProvider(base_url="http://localhost:8000/v1", api_key="testkey", model="whisper-1")
+        p = OpenAICompatibleProvider(
+            base_url="http://localhost:8000/v1",
+            api_key="testkey",
+            model="whisper-1",
+            language="en",
+            post_process=True,
+        )
+        p.hints = "Expected vocabulary: TalkToVibe"
 
         class FakeResult:
-            text = "  hello world  "
+            text = "  um, hello world  "
 
         class FakeTranscriptions:
             def create(self, **kwargs):
                 assert kwargs["model"] == "whisper-1"
+                assert kwargs["language"] == "en"
+                assert kwargs["prompt"] == "Expected vocabulary: TalkToVibe"
                 assert "file" in kwargs
                 return FakeResult()
 
@@ -51,7 +60,33 @@ class TestOpenAICompatibleProvider:
 
         p.client = FakeClient()
         result = p.transcribe(audio)
-        assert result == "hello world"
+        assert result == "Hello world"
+
+    def test_transcribe_can_skip_post_process(self):
+        audio = np.zeros((16000, 1), dtype=np.int16)
+        p = OpenAICompatibleProvider(
+            base_url="http://localhost:8000/v1",
+            api_key="testkey",
+            model="whisper-1",
+            post_process=False,
+        )
+
+        class FakeResult:
+            text = "  um, hello world  "
+
+        class FakeTranscriptions:
+            def create(self, **kwargs):
+                return FakeResult()
+
+        class FakeAudio:
+            transcriptions = FakeTranscriptions()
+
+        class FakeClient:
+            audio = FakeAudio()
+
+        p.client = FakeClient()
+        result = p.transcribe(audio)
+        assert result == "um, hello world"
 
     def test_no_hardcoded_defaults_in_provider(self):
         with pytest.raises(TypeError):

@@ -7,9 +7,15 @@ OPENROUTER_SERVICE_TIERS = ("", "flex", "priority")
 
 
 @dataclass
-class GroqConfig:
+class OpenRouterWhisperConfig:
     api_key: str = ""
-    model: str = "whisper-large-v3-turbo"
+    model: str = "openai/whisper-large-v3-turbo"
+    base_url: str = "https://openrouter.ai/api/v1/audio/transcriptions"
+    language: str = ""
+    hints_file: str = ""
+    post_process: bool = True
+    temperature: float = 0
+    hint_provider_slug: str = "groq"
 
 
 @dataclass
@@ -49,7 +55,7 @@ class LocalWhisperConfig:
 
 @dataclass
 class ProviderConfig:
-    groq: GroqConfig = field(default_factory=GroqConfig)
+    openrouter_whisper: OpenRouterWhisperConfig = field(default_factory=OpenRouterWhisperConfig)
     openai: OpenAIConfig = field(default_factory=OpenAIConfig)
     openai_compatible: OpenAICompatibleConfig = field(default_factory=OpenAICompatibleConfig)
     openrouter: OpenRouterConfig = field(default_factory=OpenRouterConfig)
@@ -67,13 +73,15 @@ class AppConfig:
 
     def validate(self) -> list[str]:
         errors = []
-        if self.provider not in ("groq", "openai", "openai_compatible", "openrouter", "local_whisper"):
+        if self.provider not in ("openrouter_whisper", "openai", "openai_compatible", "openrouter", "local_whisper"):
             errors.append(f"Unknown provider: {self.provider}")
-        if self.provider == "groq":
-            if not self.providers.groq.api_key:
-                errors.append("Groq API key is required when provider is 'groq'")
-            if not self.providers.groq.model:
-                errors.append("Groq model is required when provider is 'groq'")
+        if self.provider == "openrouter_whisper":
+            if not self.providers.openrouter_whisper.api_key:
+                errors.append("OpenRouter API key is required when provider is 'openrouter_whisper'")
+            if not self.providers.openrouter_whisper.model:
+                errors.append("OpenRouter Whisper model is required when provider is 'openrouter_whisper'")
+            if not self.providers.openrouter_whisper.base_url:
+                errors.append("OpenRouter Whisper base URL is required when provider is 'openrouter_whisper'")
         if self.provider == "openai":
             if not self.providers.openai.api_key:
                 errors.append("OpenAI API key is required when provider is 'openai'")

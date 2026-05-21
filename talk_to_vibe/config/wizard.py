@@ -1,6 +1,6 @@
 from talk_to_vibe.config.constants import SUPPORTED_PROVIDERS
 from talk_to_vibe.config.loader import load_config, save_config
-from talk_to_vibe.config.models import AppConfig, GroqConfig, OpenAICompatibleConfig, OpenRouterConfig
+from talk_to_vibe.config.models import AppConfig, OpenAICompatibleConfig, OpenRouterConfig
 from talk_to_vibe.errors import ConfigError
 
 
@@ -30,14 +30,14 @@ def run_wizard(config: AppConfig | None = None, force: bool = False) -> AppConfi
     if config is None:
         config = load_config()
 
-    if not force and config.providers.groq.api_key:
+    if not force and config.providers.openrouter_whisper.api_key:
         return config
 
     print("\n🔧 STT Provider Setup\n")
     print("   Choose your Speech-to-Text provider:\n")
 
     display_names = {
-        "groq": "Groq — Whisper transcription (free, fast)",
+        "openrouter_whisper": "OpenRouter Whisper — Whisper transcription via OpenRouter",
         "openai": "OpenAI — Whisper transcription (paid)",
         "openai_compatible": "OpenAI-Compatible — Whisper transcription (self-hosted)",
         "openrouter": "OpenRouter — Multimodal chat models (Gemini, etc.)",
@@ -62,13 +62,19 @@ def run_wizard(config: AppConfig | None = None, force: bool = False) -> AppConfi
     config.provider = provider
     print(f"\n   Selected: {display_names.get(provider, provider)}\n")
 
-    if provider == "groq":
-        config.providers.groq.api_key = _ask_api_key(
-            "Groq", "https://console.groq.com/keys", "gsk_"
+    if provider == "openrouter_whisper":
+        orw = config.providers.openrouter_whisper
+        orw.api_key = _ask_api_key(
+            "OpenRouter", "https://openrouter.ai/settings/keys", "sk-or-"
         )
-        model = _input_safe(f"   Model name (default: {config.providers.groq.model}): ")
+        model = _input_safe(f"   Model name (default: {orw.model}): ")
         if model:
-            config.providers.groq.model = model
+            orw.model = model
+        base_url = _input_safe(f"   Base URL (default: {orw.base_url}): ")
+        if base_url:
+            orw.base_url = base_url
+        language = _input_safe(f"   Language (default: auto-detect): ")
+        orw.language = language
 
     elif provider == "openai":
         config.providers.openai.api_key = _ask_api_key(
@@ -135,6 +141,8 @@ def run_wizard(config: AppConfig | None = None, force: bool = False) -> AppConfi
     _configure_auto_enter(config)
     if provider == "local_whisper":
         _configure_local_whisper_output(config)
+    elif provider == "openrouter_whisper":
+        _configure_remote_whisper_output(config)
     else:
         _configure_prompt_file(config)
 
@@ -363,6 +371,46 @@ def _configure_local_whisper_output(config: AppConfig) -> None:
             break
         if choice == "2":
             lw.post_process = False
+            print("   Selected: OFF")
+            break
+        print("   ⚠️  Enter 1 or 2")
+
+
+def _configure_remote_whisper_output(config: AppConfig) -> None:
+    orw = config.providers.openrouter_whisper
+
+    print("\n🎙️  Remote Whisper Output Quality\n")
+    print("   Talk to Vibe can improve OpenRouter Whisper output in two ways:\n")
+    print("   1) Decoder hints — sent as provider-specific prompt biasing when supported.")
+    print("   2) Post-processing — a fast regex pass removes filler words")
+    print("      (um, uh, you know) and repeated-word self-corrections.\n")
+
+    print("   ── Decoder Hints ──")
+    current_hints = orw.hints_file or "(bundled coding sample)"
+    print(f"   Current hints file: {current_hints}\n")
+    hints_path = _input_safe("   Path to custom hints .md (Enter = use bundled sample): ")
+    if hints_path:
+        orw.hints_file = hints_path
+        print(f"   Custom hints file set: {hints_path}")
+    else:
+        orw.hints_file = ""
+        print("   Using bundled coding-vocabulary sample")
+
+    print("\n   ── Post-Processing ──")
+    current_pp = "ON" if orw.post_process else "OFF"
+    print(f"   Current: {current_pp}")
+    print("   1) ON  — strip filler words and self-corrections")
+    print("   2) OFF — pass Whisper output through unchanged\n")
+    while True:
+        choice = _input_safe(f"   Select [1-2] (Enter = keep {current_pp}): ")
+        if not choice:
+            break
+        if choice == "1":
+            orw.post_process = True
+            print("   Selected: ON")
+            break
+        if choice == "2":
+            orw.post_process = False
             print("   Selected: OFF")
             break
         print("   ⚠️  Enter 1 or 2")

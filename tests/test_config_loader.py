@@ -1,15 +1,22 @@
 import pytest
 import yaml
 
-from talk_to_vibe.config.loader import load_config, save_config, _config_to_yaml, _dict_to_config
-from talk_to_vibe.config.models import AppConfig, ProviderConfig, GroqConfig, OpenAIConfig, OpenAICompatibleConfig, OpenRouterConfig
+from talk_to_vibe.config.loader import _config_to_yaml, _dict_to_config, load_config, save_config
+from talk_to_vibe.config.models import (
+    AppConfig,
+    OpenAICompatibleConfig,
+    OpenAIConfig,
+    OpenRouterConfig,
+    OpenRouterWhisperConfig,
+    ProviderConfig,
+)
 from talk_to_vibe.errors import ConfigError
 
 
 class TestAppConfigDefaults:
-    def test_default_provider_is_groq(self):
+    def test_default_provider_is_openrouter_whisper(self):
         cfg = AppConfig()
-        assert cfg.provider == "groq"
+        assert cfg.provider == "openrouter_whisper"
 
     def test_default_ptt_key_is_f18(self):
         cfg = AppConfig()
@@ -25,26 +32,30 @@ class TestAppConfigDefaults:
 
     def test_default_provider_configs_exist(self):
         cfg = AppConfig()
-        assert isinstance(cfg.providers.groq, GroqConfig)
+        assert isinstance(cfg.providers.openrouter_whisper, OpenRouterWhisperConfig)
         assert isinstance(cfg.providers.openai, OpenAIConfig)
         assert isinstance(cfg.providers.openai_compatible, OpenAICompatibleConfig)
         assert isinstance(cfg.providers.openrouter, OpenRouterConfig)
 
     def test_default_models_are_in_config(self):
         cfg = AppConfig()
-        assert cfg.providers.groq.model == "whisper-large-v3-turbo"
+        assert cfg.providers.openrouter_whisper.model == "openai/whisper-large-v3-turbo"
         assert cfg.providers.openai.model == "whisper-1"
         assert cfg.providers.openai_compatible.model == "whisper-1"
         assert cfg.providers.openrouter.model == "google/gemini-3.1-flash-lite-preview"
 
     def test_default_base_urls_are_in_config(self):
         cfg = AppConfig()
+        assert cfg.providers.openrouter_whisper.base_url == "https://openrouter.ai/api/v1/audio/transcriptions"
         assert cfg.providers.openrouter.base_url == "https://openrouter.ai/api/v1/chat/completions"
 
 
 class TestAppConfigValidation:
-    def test_valid_groq_config(self):
-        cfg = AppConfig(provider="groq", providers=ProviderConfig(groq=GroqConfig(api_key="gsk_test")))
+    def test_valid_openrouter_whisper_config(self):
+        cfg = AppConfig(
+            provider="openrouter_whisper",
+            providers=ProviderConfig(openrouter_whisper=OpenRouterWhisperConfig(api_key="sk-or-test")),
+        )
         assert cfg.validate() == []
 
     def test_valid_openai_config(self):
@@ -66,10 +77,10 @@ class TestAppConfigValidation:
         )
         assert cfg.validate() == []
 
-    def test_missing_groq_api_key(self):
-        cfg = AppConfig(provider="groq")
+    def test_missing_openrouter_whisper_api_key(self):
+        cfg = AppConfig(provider="openrouter_whisper")
         errors = cfg.validate()
-        assert any("Groq API key" in e for e in errors)
+        assert any("OpenRouter API key" in e for e in errors)
 
     def test_missing_openai_api_key(self):
         cfg = AppConfig(provider="openai")
@@ -101,19 +112,19 @@ class TestAppConfigValidation:
         errors = cfg.validate()
         assert any("OpenRouter base URL" in e for e in errors)
 
-    def test_invalid_openrouter_service_tier(self):
+    def test_missing_openrouter_whisper_model(self):
         cfg = AppConfig(
-            provider="openrouter",
-            providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-test", service_tier="fastest")),
+            provider="openrouter_whisper",
+            providers=ProviderConfig(openrouter_whisper=OpenRouterWhisperConfig(api_key="sk-or-test", model="")),
         )
         errors = cfg.validate()
-        assert any("service_tier" in e for e in errors)
+        assert any("OpenRouter Whisper model" in e for e in errors)
 
 
 class TestLoadConfig:
     def test_load_missing_file_returns_defaults(self, tmp_path):
         cfg = load_config(tmp_path / "nonexistent.yaml")
-        assert cfg.provider == "groq"
+        assert cfg.provider == "openrouter_whisper"
         assert cfg.ptt_key == "ctrl+9"
         assert cfg.prompt_file == ""
 
@@ -132,6 +143,29 @@ class TestLoadConfig:
         assert cfg.ptt_key == "f19"
         assert cfg.auto_enter is True
         assert cfg.providers.openrouter.api_key == "sk-or-test123"
+
+    def test_load_openrouter_whisper(self, tmp_path):
+        p = tmp_path / "config.yaml"
+        p.write_text(yaml.dump({
+            "provider": "openrouter_whisper",
+            "providers": {
+                "openrouter_whisper": {
+                    "api_key": "sk-or-test123",
+                    "model": "openai/whisper-large-v3",
+                    "base_url": "https://openrouter.ai/api/v1/audio/transcriptions",
+                    "language": "en",
+                    "post_process": False,
+                    "temperature": 0.2,
+                    "hint_provider_slug": "groq",
+                },
+            },
+        }))
+        cfg = load_config(p)
+        assert cfg.providers.openrouter_whisper.api_key == "sk-or-test123"
+        assert cfg.providers.openrouter_whisper.model == "openai/whisper-large-v3"
+        assert cfg.providers.openrouter_whisper.language == "en"
+        assert cfg.providers.openrouter_whisper.post_process is False
+        assert cfg.providers.openrouter_whisper.temperature == 0.2
 
     def test_load_openrouter_service_tier(self, tmp_path):
         p = tmp_path / "config.yaml"
@@ -152,9 +186,9 @@ class TestLoadConfig:
     def test_load_prompt_file(self, tmp_path):
         p = tmp_path / "config.yaml"
         p.write_text(yaml.dump({
-            "provider": "groq",
+            "provider": "openrouter_whisper",
             "prompt_file": "~/my_prompt.md",
-            "providers": {"groq": {"api_key": "gsk_test"}},
+            "providers": {"openrouter_whisper": {"api_key": "sk-or-test"}},
         }))
         cfg = load_config(p)
         assert cfg.prompt_file == "~/my_prompt.md"
@@ -196,11 +230,15 @@ class TestSaveConfig:
     def test_roundtrip_save_load(self, tmp_path):
         p = tmp_path / "config.yaml"
         original = AppConfig(
-            provider="groq",
+            provider="openrouter_whisper",
             ptt_key="cmd_r",
             auto_enter=True,
             providers=ProviderConfig(
-                groq=GroqConfig(api_key="gsk_abc123", model="whisper-large-v3"),
+                openrouter_whisper=OpenRouterWhisperConfig(
+                    api_key="sk-or-abc123",
+                    model="openai/whisper-large-v3",
+                    language="en",
+                ),
             ),
         )
         save_config(original, path=p)
@@ -208,15 +246,15 @@ class TestSaveConfig:
         assert loaded.provider == original.provider
         assert loaded.ptt_key == original.ptt_key
         assert loaded.auto_enter == original.auto_enter
-        assert loaded.providers.groq.api_key == original.providers.groq.api_key
-        assert loaded.providers.groq.model == original.providers.groq.model
+        assert loaded.providers.openrouter_whisper.api_key == original.providers.openrouter_whisper.api_key
+        assert loaded.providers.openrouter_whisper.model == original.providers.openrouter_whisper.model
 
     def test_roundtrip_prompt_file(self, tmp_path):
         p = tmp_path / "config.yaml"
         original = AppConfig(
-            provider="groq",
+            provider="openrouter_whisper",
             prompt_file="~/my_prompt.md",
-            providers=ProviderConfig(groq=GroqConfig(api_key="gsk_test")),
+            providers=ProviderConfig(openrouter_whisper=OpenRouterWhisperConfig(api_key="sk-or-test")),
         )
         save_config(original, path=p)
         loaded = load_config(p)
@@ -224,7 +262,7 @@ class TestSaveConfig:
 
     def test_saved_yaml_has_commented_prompt_file_when_empty(self, tmp_path):
         p = tmp_path / "config.yaml"
-        cfg = AppConfig(provider="groq", providers=ProviderConfig(groq=GroqConfig(api_key="gsk_test")))
+        cfg = AppConfig(provider="openrouter_whisper", providers=ProviderConfig(openrouter_whisper=OpenRouterWhisperConfig(api_key="sk-or-test")))
         save_config(cfg, path=p)
         content = p.read_text()
         assert "# prompt_file:" in content
@@ -232,9 +270,9 @@ class TestSaveConfig:
     def test_saved_yaml_has_active_prompt_file_when_set(self, tmp_path):
         p = tmp_path / "config.yaml"
         cfg = AppConfig(
-            provider="groq",
+            provider="openrouter_whisper",
             prompt_file="~/my_prompt.md",
-            providers=ProviderConfig(groq=GroqConfig(api_key="gsk_test")),
+            providers=ProviderConfig(openrouter_whisper=OpenRouterWhisperConfig(api_key="sk-or-test")),
         )
         save_config(cfg, path=p)
         content = p.read_text()
@@ -243,37 +281,37 @@ class TestSaveConfig:
 
     def test_saved_yaml_has_commented_inactive_providers(self, tmp_path):
         p = tmp_path / "config.yaml"
-        cfg = AppConfig(provider="groq", providers=ProviderConfig(groq=GroqConfig(api_key="gsk_test")))
+        cfg = AppConfig(provider="openrouter_whisper", providers=ProviderConfig(openrouter_whisper=OpenRouterWhisperConfig(api_key="sk-or-test")))
         save_config(cfg, path=p)
         content = p.read_text()
-        assert "# api_key: sk-or-..." in content
+        assert "# api_key: sk-..." in content
         assert "# base_url: http://localhost:8000/v1" in content
-        assert "api_key: gsk_test" in content
+        assert "api_key: sk-or-test" in content
 
     def test_saved_yaml_has_active_provider_uncommented(self, tmp_path):
         p = tmp_path / "config.yaml"
         cfg = AppConfig(
-            provider="openrouter",
-            providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-real", service_tier="priority")),
+            provider="openrouter_whisper",
+            providers=ProviderConfig(openrouter_whisper=OpenRouterWhisperConfig(api_key="sk-or-real", post_process=False)),
         )
         save_config(cfg, path=p)
         content = p.read_text()
         lines = content.split("\n")
-        openrouter_section = False
+        openrouter_whisper_section = False
         for line in lines:
-            if "openrouter:" in line and not line.strip().startswith("#"):
-                openrouter_section = True
-            if openrouter_section and "api_key:" in line and not line.strip().startswith("#"):
+            if "openrouter_whisper:" in line and not line.strip().startswith("#"):
+                openrouter_whisper_section = True
+            if openrouter_whisper_section and "api_key:" in line and not line.strip().startswith("#"):
                 assert "sk-or-real" in line
                 break
-        assert "service_tier: priority" in content
+        assert "post_process: false" in content
 
 
 class TestConfigToYaml:
     def test_includes_all_provider_sections(self):
         cfg = AppConfig()
         result = _config_to_yaml(cfg)
-        assert "groq:" in result
+        assert "openrouter_whisper:" in result
         assert "openai:" in result
         assert "openai_compatible:" in result
         assert "openrouter:" in result
@@ -300,13 +338,13 @@ class TestConfigToYaml:
 class TestDictToConfig:
     def test_ignores_extra_keys(self):
         raw = {
-            "provider": "groq",
+            "provider": "openrouter_whisper",
             "ptt_key": "alt_r",
             "auto_enter": False,
             "prompt_file": "",
             "providers": {
-                "groq": {"api_key": "gsk_test", "model": "whisper-large-v3-turbo", "extra": "ignored"},
+                "openrouter_whisper": {"api_key": "sk-or-test", "model": "openai/whisper-large-v3-turbo", "extra": "ignored"},
             },
         }
         cfg = _dict_to_config(raw)
-        assert cfg.providers.groq.api_key == "gsk_test"
+        assert cfg.providers.openrouter_whisper.api_key == "sk-or-test"

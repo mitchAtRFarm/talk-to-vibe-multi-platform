@@ -5,6 +5,7 @@ import numpy as np
 
 from talk_to_vibe.providers.base import BaseSTTProvider
 from talk_to_vibe.audio.wav import audio_to_wav_file
+from talk_to_vibe.providers.whisper_common import finalize_whisper_text, load_whisper_hints
 
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,15 @@ logger = logging.getLogger(__name__)
 class OpenAICompatibleProvider(BaseSTTProvider):
     provider_name = "OpenAI-Compatible"
 
-    def __init__(self, base_url: str, api_key: str, model: str):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        language: str = "",
+        hints_file: str = "",
+        post_process: bool = True,
+    ):
         from openai import OpenAI
         if not api_key:
             logger.warning(
@@ -24,15 +33,23 @@ class OpenAICompatibleProvider(BaseSTTProvider):
             api_key=api_key or "not-needed",
         )
         self.model = model
+        self.language = language
+        self.hints = load_whisper_hints(hints_file)
+        self.post_process = post_process
 
     def transcribe(self, audio_data: np.ndarray) -> str:
         wav_path = audio_to_wav_file(audio_data)
         try:
             with open(wav_path, "rb") as f:
-                result = self.client.audio.transcriptions.create(
-                    model=self.model,
-                    file=f,
-                )
-            return result.text.strip()
+                kwargs = {
+                    "model": self.model,
+                    "file": f,
+                }
+                if self.language:
+                    kwargs["language"] = self.language
+                if self.hints:
+                    kwargs["prompt"] = self.hints
+                result = self.client.audio.transcriptions.create(**kwargs)
+            return finalize_whisper_text(result.text, self.post_process)
         finally:
             os.unlink(wav_path)

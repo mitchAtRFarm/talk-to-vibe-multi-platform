@@ -1,21 +1,34 @@
 import pytest
 
+from talk_to_vibe.config.models import (
+    AppConfig,
+    OpenAICompatibleConfig,
+    OpenAIConfig,
+    OpenRouterConfig,
+    OpenRouterWhisperConfig,
+    ProviderConfig,
+)
+from talk_to_vibe.errors import ProviderAuthError, ProviderError
 from talk_to_vibe.providers.factory import create_provider
-from talk_to_vibe.providers.openrouter_multimodal import OpenRouterMultimodalProvider
 from talk_to_vibe.providers.openai_compatible import OpenAICompatibleProvider
-from talk_to_vibe.providers.groq_whisper import GroqWhisperProvider
 from talk_to_vibe.providers.openai_whisper import OpenAIWhisperProvider
-from talk_to_vibe.config.models import AppConfig, ProviderConfig, GroqConfig, OpenAIConfig, OpenAICompatibleConfig, OpenRouterConfig
-from talk_to_vibe.errors import ProviderError, ProviderAuthError
+from talk_to_vibe.providers.openrouter_multimodal import OpenRouterMultimodalProvider
+from talk_to_vibe.providers.openrouter_whisper import OpenRouterWhisperProvider
 
 
 class TestCreateProvider:
-    def test_groq_provider(self):
-        cfg = AppConfig(provider="groq", providers=ProviderConfig(groq=GroqConfig(api_key="gsk_test")))
+    def test_openrouter_whisper_provider(self):
+        cfg = AppConfig(
+            provider="openrouter_whisper",
+            providers=ProviderConfig(
+                openrouter_whisper=OpenRouterWhisperConfig(api_key="sk-or-test")
+            ),
+        )
         p = create_provider(cfg)
-        assert isinstance(p, GroqWhisperProvider)
-        assert p.provider_name == "Groq"
-        assert p.model == "whisper-large-v3-turbo"
+        assert isinstance(p, OpenRouterWhisperProvider)
+        assert p.provider_name == "OpenRouter Whisper"
+        assert p.model == "openai/whisper-large-v3-turbo"
+        assert p.base_url == "https://openrouter.ai/api/v1/audio/transcriptions"
 
     def test_openai_provider(self):
         cfg = AppConfig(provider="openai", providers=ProviderConfig(openai=OpenAIConfig(api_key="sk_test")))
@@ -25,7 +38,12 @@ class TestCreateProvider:
         assert p.model == "whisper-1"
 
     def test_openai_compatible_provider(self):
-        cfg = AppConfig(provider="openai_compatible", providers=ProviderConfig(openai_compatible=OpenAICompatibleConfig(base_url="http://localhost:8000/v1", api_key="key")))
+        cfg = AppConfig(
+            provider="openai_compatible",
+            providers=ProviderConfig(
+                openai_compatible=OpenAICompatibleConfig(base_url="http://localhost:8000/v1", api_key="key")
+            ),
+        )
         p = create_provider(cfg)
         assert isinstance(p, OpenAICompatibleProvider)
         assert p.provider_name == "OpenAI-Compatible"
@@ -46,9 +64,9 @@ class TestCreateProvider:
         with pytest.raises(ProviderError, match="Unknown provider"):
             create_provider(cfg)
 
-    def test_missing_groq_key_raises(self):
-        cfg = AppConfig(provider="groq")
-        with pytest.raises(ProviderAuthError, match="Groq API key") as exc:
+    def test_missing_openrouter_whisper_key_raises(self):
+        cfg = AppConfig(provider="openrouter_whisper")
+        with pytest.raises(ProviderAuthError, match="OpenRouter API key") as exc:
             create_provider(cfg)
         assert "Reconfigure" in str(exc.value)
 
@@ -67,6 +85,25 @@ class TestCreateProvider:
         with pytest.raises(ProviderAuthError, match="OpenRouter API key") as exc:
             create_provider(cfg)
         assert "TalkToVibe" in str(exc.value)
+
+    def test_openrouter_whisper_custom_fields(self):
+        cfg = AppConfig(
+            provider="openrouter_whisper",
+            providers=ProviderConfig(
+                openrouter_whisper=OpenRouterWhisperConfig(
+                    api_key="sk-or-test",
+                    model="openai/whisper-large-v3",
+                    language="en",
+                    post_process=False,
+                    hint_provider_slug="groq",
+                )
+            ),
+        )
+        p = create_provider(cfg)
+        assert p.model == "openai/whisper-large-v3"
+        assert p.language == "en"
+        assert p.post_process is False
+        assert p.hint_provider_slug == "groq"
 
     def test_openrouter_custom_model(self):
         cfg = AppConfig(provider="openrouter", providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-test", model="google/gemini-2.5-flash")))

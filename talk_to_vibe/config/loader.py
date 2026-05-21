@@ -7,7 +7,7 @@ from talk_to_vibe.config.constants import CONFIG_DIR, CONFIG_FILE, DEFAULT_PTT_K
 from talk_to_vibe.config.models import (
     AppConfig,
     ProviderConfig,
-    GroqConfig,
+    OpenRouterWhisperConfig,
     OpenAIConfig,
     OpenAICompatibleConfig,
     OpenRouterConfig,
@@ -42,7 +42,7 @@ def save_config(config: AppConfig, path: Optional[Path] = None) -> None:
 
 def _dict_to_config(raw: dict) -> AppConfig:
     providers_raw = raw.get("providers", {})
-    groq_raw = providers_raw.get("groq", {})
+    openrouter_whisper_raw = providers_raw.get("openrouter_whisper", {})
     openai_raw = providers_raw.get("openai", {})
     compat_raw = providers_raw.get("openai_compatible", {})
     openrouter_raw = providers_raw.get("openrouter", {})
@@ -54,13 +54,16 @@ def _dict_to_config(raw: dict) -> AppConfig:
     mic_preferences = [str(p).strip() for p in mic_prefs_raw if str(p).strip()]
 
     return AppConfig(
-        provider=raw.get("provider", "groq"),
+        provider=raw.get("provider", "openrouter_whisper"),
         ptt_key=raw.get("ptt_key", DEFAULT_PTT_KEY),
         auto_enter=raw.get("auto_enter", False),
         prompt_file=raw.get("prompt_file", ""),
         mic_preferences=mic_preferences,
         providers=ProviderConfig(
-            groq=GroqConfig(**{k: v for k, v in (groq_raw or {}).items() if k in GroqConfig.__dataclass_fields__}),
+            openrouter_whisper=OpenRouterWhisperConfig(**{
+                k: v for k, v in (openrouter_whisper_raw or {}).items()
+                if k in OpenRouterWhisperConfig.__dataclass_fields__
+            }),
             openai=OpenAIConfig(**{k: v for k, v in (openai_raw or {}).items() if k in OpenAIConfig.__dataclass_fields__}),
             openai_compatible=OpenAICompatibleConfig(**{k: v for k, v in (compat_raw or {}).items() if k in OpenAICompatibleConfig.__dataclass_fields__}),
             openrouter=OpenRouterConfig(**{k: v for k, v in (openrouter_raw or {}).items() if k in OpenRouterConfig.__dataclass_fields__}),
@@ -88,9 +91,29 @@ def _config_to_yaml(config: AppConfig) -> str:
         lines.append("#   - \"NexiGo\"                   # Useful for KVM/USB hot-plug — re-evaluated on every recording.")
     lines.append("")
     lines.append("providers:")
-    lines.append("  groq:")
-    lines.append(f"    api_key: {_yaml_val(config.providers.groq.api_key)}")
-    lines.append(f"    model: {_yaml_val(config.providers.groq.model)}")
+    lines.append("  openrouter_whisper:")
+    if config.provider == "openrouter_whisper":
+        orw = config.providers.openrouter_whisper
+        lines.append(f"    api_key: {_yaml_val(orw.api_key)}")
+        lines.append(f"    model: {_yaml_val(orw.model)}")
+        lines.append(f"    base_url: {_yaml_val(orw.base_url)}")
+        lines.append(f"    language: {_yaml_val(orw.language)}")
+        lines.append(f"    post_process: {_yaml_val(orw.post_process)}")
+        lines.append(f"    temperature: {_yaml_val(orw.temperature)}")
+        lines.append(f"    hint_provider_slug: {_yaml_val(orw.hint_provider_slug)}")
+        if orw.hints_file:
+            lines.append(f"    hints_file: {_yaml_val(orw.hints_file)}")
+        else:
+            lines.append("    # hints_file: ~/my_hints.md  # Custom vocab/style sample for Whisper decoder biasing")
+    else:
+        lines.append("    # api_key: sk-or-...")
+        lines.append("    # model: openai/whisper-large-v3-turbo")
+        lines.append("    # base_url: https://openrouter.ai/api/v1/audio/transcriptions")
+        lines.append("    # language: \"\"  # empty = auto-detect (recommended)")
+        lines.append("    # post_process: true")
+        lines.append("    # temperature: 0")
+        lines.append("    # hint_provider_slug: groq")
+        lines.append("    # hints_file: ~/my_hints.md  # Custom vocab/style sample for Whisper decoder biasing")
     lines.append("  openai:")
     if config.provider == "openai":
         lines.append(f"    api_key: {_yaml_val(config.providers.openai.api_key)}")

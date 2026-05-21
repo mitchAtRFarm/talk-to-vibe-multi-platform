@@ -1,8 +1,8 @@
 from talk_to_vibe.providers.base import BaseSTTProvider
-from talk_to_vibe.providers.groq_whisper import GroqWhisperProvider
 from talk_to_vibe.providers.openai_whisper import OpenAIWhisperProvider
 from talk_to_vibe.providers.openai_compatible import OpenAICompatibleProvider
 from talk_to_vibe.providers.openrouter_multimodal import OpenRouterMultimodalProvider
+from talk_to_vibe.providers.openrouter_whisper import OpenRouterWhisperProvider
 from talk_to_vibe.providers.local_whisper import LocalWhisperProvider
 from talk_to_vibe.config.models import AppConfig
 from talk_to_vibe.errors import ProviderError, ProviderAuthError
@@ -13,7 +13,7 @@ def _setup_hint() -> str:
 
 
 PROVIDER_REGISTRY = {
-    "groq": GroqWhisperProvider,
+    "openrouter_whisper": OpenRouterWhisperProvider,
     "openai": OpenAIWhisperProvider,
     "openai_compatible": OpenAICompatibleProvider,
     "openrouter": OpenRouterMultimodalProvider,
@@ -48,10 +48,20 @@ def create_provider(config: AppConfig) -> BaseSTTProvider:
                 "to install it, or pip install faster-whisper inside the venv."
             ) from exc
 
-    if provider_name == "groq":
-        if not config.providers.groq.api_key:
-            raise ProviderAuthError(f"Groq API key not found. {_setup_hint()}")
-        return cls(api_key=config.providers.groq.api_key, model=config.providers.groq.model)
+    if provider_name == "openrouter_whisper":
+        orw = config.providers.openrouter_whisper
+        if not orw.api_key:
+            raise ProviderAuthError(f"OpenRouter API key not found. {_setup_hint()}")
+        return cls(
+            api_key=orw.api_key,
+            model=orw.model,
+            base_url=orw.base_url,
+            language=orw.language,
+            hints_file=orw.hints_file,
+            post_process=orw.post_process,
+            temperature=orw.temperature,
+            hint_provider_slug=orw.hint_provider_slug,
+        )
 
     elif provider_name == "openai":
         if not config.providers.openai.api_key:

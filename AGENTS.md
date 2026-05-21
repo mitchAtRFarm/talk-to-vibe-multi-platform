@@ -10,7 +10,7 @@ Push-to-talk speech-to-text tool. Hold a key, speak, release — text is auto-pa
 talk_to_vibe/
   config/      — YAML config models, loader, wizard
   audio/       — microphone recording, WAV helpers
-  providers/   — STT backends (groq, openai, openai_compatible, openrouter)
+  providers/   — STT backends (openrouter_whisper, openai, openai_compatible, openrouter)
   providers/prompts/ — Bundled .md prompt files and loader (transcription.md)
   platforms/   — OS-specific behavior (macOS + Linux active, Windows stub)
   app.py       — main app loop (terminal mode)
@@ -26,11 +26,11 @@ There are two distinct provider types in this codebase. They use different API s
 
 ### Whisper Transcription Providers
 
-- **Providers**: `groq`, `openai`, `openai_compatible`
-- **API**: OpenAI `/audio/transcriptions` endpoint
-- **Input**: WAV file upload
+- **Providers**: `openrouter_whisper`, `openai`, `openai_compatible`
+- **API**: Dedicated transcription endpoints
+- **Input**: WAV audio
 - **Output**: Structured transcription response with `.text`
-- **SDK**: Uses the `openai` or `groq` Python SDK's `client.audio.transcriptions.create()` method
+- **Transport**: `openrouter_whisper` uses direct `httpx` POST to OpenRouter STT; `openai` and `openai_compatible` use the OpenAI SDK transcription client
 - **When to use**: Pure speech-to-text dictation. Simplest, most reliable for transcription.
 
 ### Multimodal Chat Providers
