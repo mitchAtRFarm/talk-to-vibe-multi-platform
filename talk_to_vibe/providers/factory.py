@@ -75,6 +75,11 @@ def create_provider(config: AppConfig) -> BaseSTTProvider:
             base_url=config.providers.openai_compatible.base_url,
             api_key=config.providers.openai_compatible.api_key,
             model=config.providers.openai_compatible.model,
+            language=config.providers.openai_compatible.language,
+            hints_file=config.providers.openai_compatible.hints_file,
+            post_process=config.providers.openai_compatible.post_process,
+            temperature=config.providers.openai_compatible.temperature,
+            verify_ssl=config.providers.openai_compatible.verify_ssl,
         )
 
     elif provider_name == "openrouter":

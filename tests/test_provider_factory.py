@@ -50,6 +50,20 @@ class TestCreateProvider:
         assert p.model == "whisper-1"
         assert str(p.client.base_url).rstrip("/") == "http://localhost:8000/v1"
 
+    def test_openai_compatible_minimal_config_wires_defaults(self):
+        cfg = AppConfig(
+            provider="openai_compatible",
+            providers=ProviderConfig(
+                openai_compatible=OpenAICompatibleConfig(base_url="http://localhost:8000/v1")
+            ),
+        )
+        p = create_provider(cfg)
+        assert p.model == "whisper-1"
+        assert p.language == ""
+        assert p.post_process is True
+        assert p.temperature == 0
+        assert p.verify_ssl is True
+
     def test_openrouter_provider(self):
         cfg = AppConfig(provider="openrouter", providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-test")))
         p = create_provider(cfg)
@@ -119,3 +133,31 @@ class TestCreateProvider:
         cfg = AppConfig(provider="openrouter", providers=ProviderConfig(openrouter=OpenRouterConfig(api_key="sk-or-test", service_tier="priority")))
         p = create_provider(cfg)
         assert p.service_tier == "priority"
+
+    def test_openai_compatible_with_all_fields(self, tmp_path):
+        custom_hints = tmp_path / "hints.md"
+        custom_hints.write_text("Custom vocabulary: TestApp\n")
+
+        cfg = AppConfig(
+            provider="openai_compatible",
+            providers=ProviderConfig(
+                openai_compatible=OpenAICompatibleConfig(
+                    base_url="http://localhost:8000/v1",
+                    api_key="testkey",
+                    model="whisper-1",
+                    language="en",
+                    hints_file=str(custom_hints),
+                    post_process=True,
+                    temperature=0.3,
+                    verify_ssl=False,
+                ),
+            ),
+        )
+        p = create_provider(cfg)
+        assert isinstance(p, OpenAICompatibleProvider)
+        assert p.model == "whisper-1"
+        assert p.language == "en"
+        assert p.post_process is True
+        assert p.temperature == 0.3
+        assert p.verify_ssl is False
+        assert p.hints == "Custom vocabulary: TestApp"

@@ -96,6 +96,30 @@ def run_wizard(config: AppConfig | None = None, force: bool = False) -> AppConfi
         model = _input_safe(f"   Model name (default: {config.providers.openai_compatible.model}): ")
         if model:
             config.providers.openai_compatible.model = model
+        language = _input_safe(f"   Language (default: auto-detect): ")
+        if language:
+            config.providers.openai_compatible.language = language
+        temperature = _input_safe(f"   Temperature (default: {config.providers.openai_compatible.temperature}): ")
+        if temperature:
+            try:
+                config.providers.openai_compatible.temperature = float(temperature)
+            except ValueError:
+                print("   ⚠️  Invalid temperature, keeping default.")
+        while True:
+            print("   SSL verification: 1) ON — verify certificates (default)  2) OFF — allow self-signed certs")
+            current_verify = "ON" if config.providers.openai_compatible.verify_ssl else "OFF"
+            verify_choice = _input_safe(f"   Select [1-2] (Enter = keep {current_verify}): ")
+            if not verify_choice:
+                break
+            if verify_choice == "1":
+                config.providers.openai_compatible.verify_ssl = True
+                print("   Selected: ON")
+                break
+            if verify_choice == "2":
+                config.providers.openai_compatible.verify_ssl = False
+                print("   Selected: OFF")
+                break
+            print("   ⚠️  Enter 1 or 2")
 
     elif provider == "openrouter":
         config.providers.openrouter.api_key = _ask_api_key(
@@ -143,6 +167,8 @@ def run_wizard(config: AppConfig | None = None, force: bool = False) -> AppConfi
         _configure_local_whisper_output(config)
     elif provider == "openrouter_whisper":
         _configure_remote_whisper_output(config)
+    elif provider == "openai_compatible":
+        _configure_openai_compatible_output(config)
     else:
         _configure_prompt_file(config)
 
@@ -411,6 +437,48 @@ def _configure_remote_whisper_output(config: AppConfig) -> None:
             break
         if choice == "2":
             orw.post_process = False
+            print("   Selected: OFF")
+            break
+        print("   ⚠️  Enter 1 or 2")
+
+
+def _configure_openai_compatible_output(config: AppConfig) -> None:
+    compat = config.providers.openai_compatible
+
+    print("\n🎙️  OpenAI-Compatible Output Quality\n")
+    print("   Talk to Vibe can improve transcription output in two ways:\n")
+    print("   1) Decoder hints — a short text sample primes Whisper toward")
+    print("      technical vocabulary, correct casing, and punctuation style.")
+    print("      A coding-focused sample is bundled; you can supply your own.\n")
+    print("   2) Post-processing — a fast regex pass removes filler words")
+    print("      (um, uh, you know) and repeated-word self-corrections.\n")
+
+    print("   ── Decoder Hints ──")
+    current_hints = compat.hints_file or "(bundled coding sample)"
+    print(f"   Current hints file: {current_hints}\n")
+    hints_path = _input_safe("   Path to custom hints .md (Enter = use bundled sample): ")
+    if hints_path:
+        compat.hints_file = hints_path
+        print(f"   Custom hints file set: {hints_path}")
+    else:
+        compat.hints_file = ""
+        print("   Using bundled coding-vocabulary sample")
+
+    print("\n   ── Post-Processing ──")
+    current_pp = "ON" if compat.post_process else "OFF"
+    print(f"   Current: {current_pp}")
+    print("   1) ON  — strip filler words and self-corrections")
+    print("   2) OFF — pass Whisper output through unchanged\n")
+    while True:
+        choice = _input_safe(f"   Select [1-2] (Enter = keep {current_pp}): ")
+        if not choice:
+            break
+        if choice == "1":
+            compat.post_process = True
+            print("   Selected: ON")
+            break
+        if choice == "2":
+            compat.post_process = False
             print("   Selected: OFF")
             break
         print("   ⚠️  Enter 1 or 2")

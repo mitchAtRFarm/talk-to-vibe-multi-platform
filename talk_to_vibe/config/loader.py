@@ -123,13 +123,27 @@ def _config_to_yaml(config: AppConfig) -> str:
         lines.append(f"    # model: whisper-1")
     lines.append("  openai_compatible:")
     if config.provider == "openai_compatible":
-        lines.append(f"    base_url: {_yaml_val(config.providers.openai_compatible.base_url)}")
-        lines.append(f"    api_key: {_yaml_val(config.providers.openai_compatible.api_key)}")
-        lines.append(f"    model: {_yaml_val(config.providers.openai_compatible.model)}")
+        compat = config.providers.openai_compatible
+        lines.append(f"    base_url: {_yaml_val(compat.base_url)}")
+        lines.append(f"    api_key: {_yaml_val(compat.api_key)}")
+        lines.append(f"    model: {_yaml_val(compat.model)}")
+        lines.append(f"    language: {_yaml_val(compat.language)}")
+        lines.append(f"    post_process: {_yaml_val(compat.post_process)}")
+        lines.append(f"    temperature: {_yaml_val(compat.temperature)}")
+        if compat.hints_file:
+            lines.append(f"    hints_file: {_yaml_val(compat.hints_file)}")
+        else:
+            lines.append("    # hints_file: ~/my_hints.md  # Custom vocab/style sample for Whisper decoder biasing")
+        lines.append(f"    verify_ssl: {_yaml_val(compat.verify_ssl)}")
     else:
         lines.append(f"    # base_url: http://localhost:8000/v1")
         lines.append(f"    # api_key: \"\"")
         lines.append(f"    # model: whisper-1")
+        lines.append(f"    # language: \"\"  # empty = auto-detect (recommended)")
+        lines.append(f"    # post_process: true")
+        lines.append(f"    # temperature: 0")
+        lines.append(f"    # hints_file: ~/my_hints.md  # Custom vocab/style sample for Whisper decoder biasing")
+        lines.append(f"    # verify_ssl: true")
     lines.append("  openrouter:")
     if config.provider == "openrouter":
         lines.append(f"    api_key: {_yaml_val(config.providers.openrouter.api_key)}")

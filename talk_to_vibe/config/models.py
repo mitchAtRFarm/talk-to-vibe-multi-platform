@@ -29,6 +29,11 @@ class OpenAICompatibleConfig:
     base_url: str = ""
     api_key: str = ""
     model: str = "whisper-1"
+    language: str = ""
+    hints_file: str = ""
+    post_process: bool = True
+    temperature: float = 0
+    verify_ssl: bool = True
 
 
 @dataclass

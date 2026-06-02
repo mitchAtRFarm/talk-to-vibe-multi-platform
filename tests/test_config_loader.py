@@ -215,6 +215,49 @@ class TestLoadConfig:
         assert cfg.prompt_file == ""
         assert cfg.providers.openai.model == "whisper-1"
 
+    def test_load_openai_compatible_with_all_fields(self, tmp_path):
+        p = tmp_path / "config.yaml"
+        p.write_text(yaml.dump({
+            "provider": "openai_compatible",
+            "providers": {
+                "openai_compatible": {
+                    "base_url": "http://localhost:8000/v1",
+                    "api_key": "testkey",
+                    "model": "whisper-1",
+                    "language": "en",
+                    "hints_file": "/path/to/hints.md",
+                    "post_process": False,
+                    "temperature": 0.5,
+                    "verify_ssl": False,
+                },
+            },
+        }))
+        cfg = load_config(p)
+        assert cfg.provider == "openai_compatible"
+        assert cfg.providers.openai_compatible.base_url == "http://localhost:8000/v1"
+        assert cfg.providers.openai_compatible.api_key == "testkey"
+        assert cfg.providers.openai_compatible.model == "whisper-1"
+        assert cfg.providers.openai_compatible.language == "en"
+        assert cfg.providers.openai_compatible.hints_file == "/path/to/hints.md"
+        assert cfg.providers.openai_compatible.post_process is False
+        assert cfg.providers.openai_compatible.temperature == 0.5
+        assert cfg.providers.openai_compatible.verify_ssl is False
+
+    def test_load_openai_compatible_missing_verify_ssl_defaults_to_true(self, tmp_path):
+        p = tmp_path / "config.yaml"
+        p.write_text(yaml.dump({
+            "provider": "openai_compatible",
+            "providers": {
+                "openai_compatible": {
+                    "base_url": "http://localhost:8000/v1",
+                    "api_key": "testkey",
+                    "model": "whisper-1",
+                },
+            },
+        }))
+        cfg = load_config(p)
+        assert cfg.providers.openai_compatible.verify_ssl is True
+
 
 class TestSaveConfig:
     def test_save_creates_file(self, tmp_path):
@@ -306,6 +349,35 @@ class TestSaveConfig:
                 break
         assert "post_process: false" in content
 
+    def test_roundtrip_openai_compatible_with_all_fields(self, tmp_path):
+        p = tmp_path / "config.yaml"
+        original = AppConfig(
+            provider="openai_compatible",
+            providers=ProviderConfig(
+                openai_compatible=OpenAICompatibleConfig(
+                    base_url="http://localhost:8000/v1",
+                    api_key="testkey",
+                    model="whisper-1",
+                    language="en",
+                    hints_file="/path/to/hints.md",
+                    post_process=False,
+                    temperature=0.5,
+                    verify_ssl=False,
+                ),
+            ),
+        )
+        save_config(original, path=p)
+        loaded = load_config(p)
+        assert loaded.provider == original.provider
+        assert loaded.providers.openai_compatible.base_url == original.providers.openai_compatible.base_url
+        assert loaded.providers.openai_compatible.api_key == original.providers.openai_compatible.api_key
+        assert loaded.providers.openai_compatible.model == original.providers.openai_compatible.model
+        assert loaded.providers.openai_compatible.language == original.providers.openai_compatible.language
+        assert loaded.providers.openai_compatible.hints_file == original.providers.openai_compatible.hints_file
+        assert loaded.providers.openai_compatible.post_process == original.providers.openai_compatible.post_process
+        assert loaded.providers.openai_compatible.temperature == original.providers.openai_compatible.temperature
+        assert loaded.providers.openai_compatible.verify_ssl == original.providers.openai_compatible.verify_ssl
+
 
 class TestConfigToYaml:
     def test_includes_all_provider_sections(self):
@@ -333,6 +405,59 @@ class TestConfigToYaml:
         cfg = AppConfig(prompt_file="")
         result = _config_to_yaml(cfg)
         assert "# prompt_file:" in result
+
+    def test_active_openai_compatible_includes_all_fields(self):
+        cfg = AppConfig(
+            provider="openai_compatible",
+            providers=ProviderConfig(
+                openai_compatible=OpenAICompatibleConfig(
+                    base_url="http://localhost:8000/v1",
+                    api_key="testkey",
+                    model="whisper-1",
+                    language="en",
+                    hints_file="/path/to/hints.md",
+                    post_process=True,
+                    temperature=0.3,
+                    verify_ssl=False,
+                ),
+            ),
+        )
+        result = _config_to_yaml(cfg)
+        assert 'base_url: "http://localhost:8000/v1"' in result
+        assert "api_key: testkey" in result
+        assert "model: whisper-1" in result
+        assert "language: en" in result
+        assert "hints_file: /path/to/hints.md" in result
+        assert "post_process: true" in result
+        assert "temperature: 0.3" in result
+        assert "verify_ssl: false" in result
+
+    def test_inactive_openai_compatible_has_commented_fields(self):
+        cfg = AppConfig(provider="openrouter_whisper")
+        result = _config_to_yaml(cfg)
+        assert "# base_url: http://localhost:8000/v1" in result
+        assert "# api_key:" in result
+        assert "# model: whisper-1" in result
+        assert "# language:" in result
+        assert "# post_process: true" in result
+        assert "# temperature: 0" in result
+        assert "# hints_file:" in result
+        assert "# verify_ssl: true" in result
+
+    def test_active_openai_compatible_verify_ssl_false(self):
+        cfg = AppConfig(
+            provider="openai_compatible",
+            providers=ProviderConfig(
+                openai_compatible=OpenAICompatibleConfig(
+                    base_url="http://localhost:8000/v1",
+                    api_key="testkey",
+                    model="whisper-1",
+                    verify_ssl=False,
+                ),
+            ),
+        )
+        result = _config_to_yaml(cfg)
+        assert "verify_ssl: false" in result
 
 
 class TestDictToConfig:

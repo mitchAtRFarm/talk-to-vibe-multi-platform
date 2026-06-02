@@ -1,6 +1,7 @@
 import logging
 import os
 
+import httpx
 import numpy as np
 
 from talk_to_vibe.providers.base import BaseSTTProvider
@@ -22,20 +23,30 @@ class OpenAICompatibleProvider(BaseSTTProvider):
         language: str = "",
         hints_file: str = "",
         post_process: bool = True,
+        temperature: float = 0,
+        verify_ssl: bool = True,
     ):
         from openai import OpenAI
         if not api_key:
             logger.warning(
                 "No API key configured for OpenAI-Compatible provider; using fallback token for unauthenticated endpoints."
             )
-        self.client = OpenAI(
-            base_url=base_url,
-            api_key=api_key or "not-needed",
-        )
+        client_kwargs = {
+            "base_url": base_url,
+            "api_key": api_key or "not-needed",
+        }
+        if not verify_ssl:
+            client_kwargs["http_client"] = httpx.Client(verify=False)
+            logger.warning(
+                "SSL verification is disabled for OpenAI-Compatible provider (verify_ssl=false)."
+            )
+        self.client = OpenAI(**client_kwargs)
         self.model = model
         self.language = language
         self.hints = load_whisper_hints(hints_file)
         self.post_process = post_process
+        self.temperature = temperature
+        self.verify_ssl = verify_ssl
 
     def transcribe(self, audio_data: np.ndarray) -> str:
         wav_path = audio_to_wav_file(audio_data)
@@ -44,6 +55,7 @@ class OpenAICompatibleProvider(BaseSTTProvider):
                 kwargs = {
                     "model": self.model,
                     "file": f,
+                    "temperature": self.temperature,
                 }
                 if self.language:
                     kwargs["language"] = self.language
