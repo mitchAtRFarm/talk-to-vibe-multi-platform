@@ -130,7 +130,11 @@ class LocalWhisperProvider(BaseSTTProvider):
         self._whisper = WhisperModel(model_size, **kwargs)
 
     def transcribe(self, audio_data: np.ndarray) -> str:
-        return " ".join(self.transcribe_stream(audio_data)).strip()
+        text = " ".join(self.transcribe_stream(audio_data)).strip()
+        if self.post_process and text:
+            from talk_to_vibe.providers.post_process import clean_transcript
+            text = clean_transcript(text)
+        return text
 
     def transcribe_stream(self, audio_data: np.ndarray) -> Iterator[str]:
         if audio_data is None or len(audio_data) == 0:
