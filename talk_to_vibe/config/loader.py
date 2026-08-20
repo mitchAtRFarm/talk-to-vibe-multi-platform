@@ -107,7 +107,7 @@ def _config_to_yaml(config: AppConfig) -> str:
             lines.append("    # hints_file: ~/my_hints.md  # Custom vocab/style sample for Whisper decoder biasing")
     else:
         lines.append("    # api_key: sk-or-...")
-        lines.append("    # model: openai/whisper-large-v3-turbo")
+        lines.append("    # model: x-ai/grok-stt-1.0")
         lines.append("    # base_url: https://openrouter.ai/api/v1/audio/transcriptions")
         lines.append("    # language: \"\"  # empty = auto-detect (recommended)")
         lines.append("    # post_process: true")

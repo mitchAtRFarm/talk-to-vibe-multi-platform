@@ -4,17 +4,21 @@ import numpy as np
 import pytest
 
 from talk_to_vibe.errors import ProviderError, ProviderResponseError
-from talk_to_vibe.providers.openrouter_whisper import OpenRouterWhisperProvider
+from talk_to_vibe.providers.openrouter_whisper import (
+    OpenRouterWhisperProvider,
+    uses_whisper_decoder_hints,
+)
 
 
-DEFAULT_MODEL = "openai/whisper-large-v3-turbo"
+WHISPER_MODEL = "openai/whisper-large-v3-turbo"
+GROK_MODEL = "x-ai/grok-stt-1.0"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1/audio/transcriptions"
 
 
 def _make_provider(**kwargs):
     defaults = {
         "api_key": "sk-or-test",
-        "model": DEFAULT_MODEL,
+        "model": WHISPER_MODEL,
         "base_url": DEFAULT_BASE_URL,
     }
     defaults.update(kwargs)
@@ -32,7 +36,7 @@ class TestBuildPayload:
         b64_audio = base64.b64encode(b"fake_wav_data").decode("utf-8")
         payload = p._build_payload(b64_audio)
 
-        assert payload["model"] == DEFAULT_MODEL
+        assert payload["model"] == WHISPER_MODEL
         assert payload["temperature"] == 0
         assert payload["input_audio"]["format"] == "wav"
         assert payload["input_audio"]["data"] == b64_audio
@@ -53,12 +57,34 @@ class TestBuildPayload:
         payload = p._build_payload("fake_b64")
         assert "provider" not in payload
 
+    def test_hint_block_omitted_for_grok_even_with_groq_slug(self):
+        p = _make_provider(model=GROK_MODEL, hint_provider_slug="groq")
+        payload = p._build_payload("fake_b64")
+        assert payload["model"] == GROK_MODEL
+        assert "provider" not in payload
+
+    def test_hint_block_omitted_for_gpt_transcribe(self):
+        p = _make_provider(model="openai/gpt-4o-mini-transcribe", hint_provider_slug="groq")
+        payload = p._build_payload("fake_b64")
+        assert "provider" not in payload
+
     def test_custom_hints_file_in_payload(self, tmp_path):
         custom = tmp_path / "custom.md"
         custom.write_text("Expected vocabulary: TalkToVibe\n")
         p = _make_provider(hints_file=str(custom))
         payload = p._build_payload("fake_b64")
         assert payload["provider"]["options"]["groq"]["prompt"] == "Expected vocabulary: TalkToVibe"
+
+
+class TestUsesWhisperDecoderHints:
+    def test_whisper_model_with_slug(self):
+        assert uses_whisper_decoder_hints(WHISPER_MODEL, "groq") is True
+
+    def test_grok_model_with_slug(self):
+        assert uses_whisper_decoder_hints(GROK_MODEL, "groq") is False
+
+    def test_empty_slug(self):
+        assert uses_whisper_decoder_hints(WHISPER_MODEL, "") is False
 
 
 class TestParseResponse:
@@ -180,7 +206,7 @@ class TestTranscribeIntegration:
         assert captured_payload["timeout"] == 60.0
 
         payload = captured_payload["json"]
-        assert payload["model"] == DEFAULT_MODEL
+        assert payload["model"] == WHISPER_MODEL
         assert payload["language"] == "en"
         assert payload["temperature"] == 0.3
         assert payload["input_audio"]["format"] == "wav"

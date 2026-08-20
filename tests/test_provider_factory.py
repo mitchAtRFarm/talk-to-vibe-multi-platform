@@ -26,8 +26,8 @@ class TestCreateProvider:
         )
         p = create_provider(cfg)
         assert isinstance(p, OpenRouterWhisperProvider)
-        assert p.provider_name == "OpenRouter Whisper"
-        assert p.model == "openai/whisper-large-v3-turbo"
+        assert p.provider_name == "OpenRouter STT"
+        assert p.model == "x-ai/grok-stt-1.0"
         assert p.base_url == "https://openrouter.ai/api/v1/audio/transcriptions"
 
     def test_openai_provider(self):

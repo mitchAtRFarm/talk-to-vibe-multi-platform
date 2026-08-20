@@ -24,6 +24,11 @@ def test_setup_script_wizard_does_not_launch_app_loop():
     assert "from talk_to_vibe.config.wizard import run_wizard" in content
 
 
+def test_setup_script_sets_keychain_timeout_noninteractively():
+    content = (REPO_ROOT / "setup_macos.sh").read_text()
+    assert "security set-keychain-settings -t 21600" in content
+
+
 def test_setup_script_strips_existing_signatures_before_resigning():
     path = REPO_ROOT / "setup_macos.sh"
     content = path.read_text()

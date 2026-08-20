@@ -9,8 +9,12 @@ from talk_to_vibe.providers.base import BaseSTTProvider
 from talk_to_vibe.providers.whisper_common import finalize_whisper_text, load_whisper_hints
 
 
+def uses_whisper_decoder_hints(model: str, hint_provider_slug: str) -> bool:
+    return bool(hint_provider_slug) and "whisper" in model.lower()
+
+
 class OpenRouterWhisperProvider(BaseSTTProvider):
-    provider_name = "OpenRouter Whisper"
+    provider_name = "OpenRouter STT"
 
     def __init__(
         self,
@@ -51,7 +55,7 @@ class OpenRouterWhisperProvider(BaseSTTProvider):
         }
         if self.language:
             payload["language"] = self.language
-        if self.hints and self.hint_provider_slug:
+        if self.hints and uses_whisper_decoder_hints(self.model, self.hint_provider_slug):
             payload["provider"] = {
                 "options": {
                     self.hint_provider_slug: {
@@ -69,7 +73,7 @@ class OpenRouterWhisperProvider(BaseSTTProvider):
         try:
             return httpx.post(self.base_url, json=payload, headers=headers, timeout=60.0)
         except httpx.RequestError as exc:
-            raise ProviderError(f"OpenRouter Whisper request failed: {exc}") from exc
+            raise ProviderError(f"OpenRouter STT request failed: {exc}") from exc
 
     def _parse_response(self, response: httpx.Response) -> str:
         if response.status_code >= 400:
@@ -79,21 +83,21 @@ class OpenRouterWhisperProvider(BaseSTTProvider):
             except Exception:
                 error_msg = response.text[:200]
             raise ProviderResponseError(
-                f"OpenRouter Whisper error (status {response.status_code}): {error_msg}"
+                f"OpenRouter STT error (status {response.status_code}): {error_msg}"
             )
 
         try:
             body = response.json()
         except Exception as exc:
             raise ProviderResponseError(
-                f"OpenRouter Whisper returned non-JSON response: {response.text[:200]}"
+                f"OpenRouter STT returned non-JSON response: {response.text[:200]}"
             ) from exc
 
         try:
             text = body["text"]
         except KeyError as exc:
             raise ProviderResponseError(
-                f"Unexpected OpenRouter Whisper response structure: {str(body)[:200]}"
+                f"Unexpected OpenRouter STT response structure: {str(body)[:200]}"
             ) from exc
 
         return finalize_whisper_text(text, self.post_process)

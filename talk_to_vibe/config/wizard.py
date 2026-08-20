@@ -37,7 +37,7 @@ def run_wizard(config: AppConfig | None = None, force: bool = False) -> AppConfi
     print("   Choose your Speech-to-Text provider:\n")
 
     display_names = {
-        "openrouter_whisper": "OpenRouter Whisper — Whisper transcription via OpenRouter",
+        "openrouter_whisper": "OpenRouter STT — transcription via OpenRouter (Grok, Whisper, GPT Transcribe)",
         "openai": "OpenAI — Whisper transcription (paid)",
         "openai_compatible": "OpenAI-Compatible — Whisper transcription (self-hosted)",
         "openrouter": "OpenRouter — Multimodal chat models (Gemini, etc.)",
@@ -405,9 +405,9 @@ def _configure_local_whisper_output(config: AppConfig) -> None:
 def _configure_remote_whisper_output(config: AppConfig) -> None:
     orw = config.providers.openrouter_whisper
 
-    print("\n🎙️  Remote Whisper Output Quality\n")
-    print("   Talk to Vibe can improve OpenRouter Whisper output in two ways:\n")
-    print("   1) Decoder hints — sent as provider-specific prompt biasing when supported.")
+    print("\n🎙️  Remote STT Output Quality\n")
+    print("   Talk to Vibe can improve OpenRouter transcription output in two ways:\n")
+    print("   1) Decoder hints — sent as provider-specific prompt biasing for Whisper models.")
     print("   2) Post-processing — a fast regex pass removes filler words")
     print("      (um, uh, you know) and repeated-word self-corrections.\n")
 

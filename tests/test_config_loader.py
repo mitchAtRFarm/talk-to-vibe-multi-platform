@@ -39,7 +39,7 @@ class TestAppConfigDefaults:
 
     def test_default_models_are_in_config(self):
         cfg = AppConfig()
-        assert cfg.providers.openrouter_whisper.model == "openai/whisper-large-v3-turbo"
+        assert cfg.providers.openrouter_whisper.model == "x-ai/grok-stt-1.0"
         assert cfg.providers.openai.model == "whisper-1"
         assert cfg.providers.openai_compatible.model == "whisper-1"
         assert cfg.providers.openrouter.model == "google/gemini-3.1-flash-lite-preview"
@@ -118,7 +118,7 @@ class TestAppConfigValidation:
             providers=ProviderConfig(openrouter_whisper=OpenRouterWhisperConfig(api_key="sk-or-test", model="")),
         )
         errors = cfg.validate()
-        assert any("OpenRouter Whisper model" in e for e in errors)
+        assert any("OpenRouter STT model" in e for e in errors)
 
 
 class TestLoadConfig:

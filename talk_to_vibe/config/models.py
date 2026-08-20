@@ -9,7 +9,7 @@ OPENROUTER_SERVICE_TIERS = ("", "flex", "priority")
 @dataclass
 class OpenRouterWhisperConfig:
     api_key: str = ""
-    model: str = "openai/whisper-large-v3-turbo"
+    model: str = "x-ai/grok-stt-1.0"
     base_url: str = "https://openrouter.ai/api/v1/audio/transcriptions"
     language: str = ""
     hints_file: str = ""
@@ -84,9 +84,9 @@ class AppConfig:
             if not self.providers.openrouter_whisper.api_key:
                 errors.append("OpenRouter API key is required when provider is 'openrouter_whisper'")
             if not self.providers.openrouter_whisper.model:
-                errors.append("OpenRouter Whisper model is required when provider is 'openrouter_whisper'")
+                errors.append("OpenRouter STT model is required when provider is 'openrouter_whisper'")
             if not self.providers.openrouter_whisper.base_url:
-                errors.append("OpenRouter Whisper base URL is required when provider is 'openrouter_whisper'")
+                errors.append("OpenRouter STT base URL is required when provider is 'openrouter_whisper'")
         if self.provider == "openai":
             if not self.providers.openai.api_key:
                 errors.append("OpenAI API key is required when provider is 'openai'")

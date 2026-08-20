@@ -258,7 +258,7 @@ ensure_signing_keychain() {
     security create-keychain -p "$keychain_password" "$SIGNING_KEYCHAIN"
   fi
 
-  security set-keychain-settings "$SIGNING_KEYCHAIN"
+  security set-keychain-settings -t 21600 "$SIGNING_KEYCHAIN"
   security unlock-keychain -p "$keychain_password" "$SIGNING_KEYCHAIN"
 
   if ! security find-identity -p codesigning "$SIGNING_KEYCHAIN" | grep -F "$SIGNING_COMMON_NAME" >/dev/null 2>&1; then
