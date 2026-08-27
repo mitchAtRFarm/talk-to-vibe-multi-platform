@@ -8,6 +8,7 @@ class PasteResult:
     full_text: str
     clipboard_restore_failed: bool = False
     clipboard_restore_reason: str = ""
+    method: str = "type"
 
 
 class BasePlatform(ABC):

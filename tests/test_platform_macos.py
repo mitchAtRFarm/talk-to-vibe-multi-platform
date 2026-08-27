@@ -1,5 +1,5 @@
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import call, patch, MagicMock
 import pytest
 
 from talk_to_vibe.platforms.macos import MacOSPlatform
@@ -140,14 +140,20 @@ class TestMacOSPlatform:
         assert len(help_lines) == 1
         assert "Microphone" in help_lines[0]
 
-    def test_paste_text_types_text(self):
+    def test_paste_text_types_each_character_with_delay(self):
         p = MacOSPlatform()
         with patch("talk_to_vibe.platforms.macos.time") as mock_time, \
-             patch("pynput.keyboard.Controller") as mock_ctrl:
-            result = p.paste_text("hello")
-            mock_ctrl.return_value.type.assert_called_once_with("hello")
-            mock_time.sleep.assert_not_called()
-            assert result.full_text == "hello"
+             patch("pynput.keyboard.Controller") as mock_ctrl, \
+             patch("pynput.keyboard.Key") as mock_key:
+            result = p.paste_text("hi")
+            controller = mock_ctrl.return_value
+            assert controller.type.call_args_list == [call("h"), call("i")]
+            assert mock_time.sleep.call_args_list == [call(0.012), call(0.012)]
+            for modifier in (mock_key.cmd, mock_key.ctrl, mock_key.alt, mock_key.shift):
+                controller.release.assert_any_call(modifier)
+            controller.press.assert_not_called()
+            assert result.full_text == "hi"
+            assert result.method == "type_slow"
             assert result.clipboard_restore_failed is False
 
     def test_paste_text_types_text_then_enters_when_enabled(self):
@@ -155,13 +161,24 @@ class TestMacOSPlatform:
         with patch("talk_to_vibe.platforms.macos.time") as mock_time, \
              patch("pynput.keyboard.Controller") as mock_ctrl, \
              patch("pynput.keyboard.Key") as mock_key:
-            result = p.paste_text("hello", auto_enter=True)
+            result = p.paste_text("hi", auto_enter=True)
             controller = mock_ctrl.return_value
-            controller.type.assert_called_once_with("hello")
-            mock_time.sleep.assert_called_once_with(0.05)
+            assert controller.type.call_args_list == [call("h"), call("i")]
+            assert mock_time.sleep.call_args_list == [call(0.012), call(0.012), call(0.05)]
             controller.press.assert_called_once_with(mock_key.enter)
-            controller.release.assert_called_once_with(mock_key.enter)
-            assert result.full_text == "hello"
+            controller.release.assert_any_call(mock_key.enter)
+            assert result.full_text == "hi"
+            assert result.method == "type_slow"
+
+    def test_paste_text_empty_does_not_type(self):
+        p = MacOSPlatform()
+        with patch("talk_to_vibe.platforms.macos.time") as mock_time, \
+             patch("pynput.keyboard.Controller") as mock_ctrl:
+            result = p.paste_text("")
+            mock_ctrl.assert_not_called()
+            mock_time.sleep.assert_not_called()
+            assert result.full_text == ""
+            assert result.method == "type_slow"
 
     def test_play_success_sound(self):
         p = MacOSPlatform()

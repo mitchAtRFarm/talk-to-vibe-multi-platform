@@ -259,7 +259,7 @@ PTT chord -> microphone -> transcription provider -> transcript -> focused app
 
 - Audio is recorded as 16 kHz mono PCM and sent to the selected provider
 - Microphone selection is re-evaluated at recording time, so preferred USB/KVM mics can recover when they come back
-- macOS inserts text by typing it into the active app
+- macOS inserts text by typing it at a 12ms cadence, matching Linux GUI insertion
 - Linux inserts text with `xdotool` when available, falls back to `pynput`, and also updates the clipboard when a clipboard tool is available
 - Installed app logs live at `~/.talktovibe/logs/app.log`
 
