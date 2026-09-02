@@ -1,12 +1,17 @@
 import base64
+import logging
 
 import httpx
 import numpy as np
 
+from talk_to_vibe.audio.chunk import pcm_duration_seconds, split_audio_chunks, stitch_transcripts
 from talk_to_vibe.audio.wav import audio_to_wav_bytes
 from talk_to_vibe.errors import ProviderError, ProviderResponseError
 from talk_to_vibe.providers.base import BaseSTTProvider
 from talk_to_vibe.providers.whisper_common import finalize_whisper_text, load_whisper_hints
+
+_MAX_TOKENS = 4096
+_logger = logging.getLogger("talktovibe.providers.openrouter_whisper")
 
 
 def uses_whisper_decoder_hints(model: str, hint_provider_slug: str) -> bool:
@@ -37,12 +42,37 @@ class OpenRouterWhisperProvider(BaseSTTProvider):
         self.hints = load_whisper_hints(hints_file)
 
     def transcribe(self, audio_data: np.ndarray) -> str:
-        wav_bytes = audio_to_wav_bytes(audio_data)
-        b64_audio = base64.b64encode(wav_bytes).decode("utf-8")
+        chunks = split_audio_chunks(audio_data)
+        pcm_seconds = pcm_duration_seconds(audio_data)
+        if not chunks:
+            return ""
 
-        payload = self._build_payload(b64_audio)
-        response = self._send_request(payload)
-        return self._parse_response(response)
+        texts: list[str] = []
+        usage_seconds = 0.0
+        output_tokens = 0
+        for chunk in chunks:
+            wav_bytes = audio_to_wav_bytes(chunk)
+            b64_audio = base64.b64encode(wav_bytes).decode("utf-8")
+            payload = self._build_payload(b64_audio)
+            response = self._send_request(payload)
+            text, seconds, tokens = self._parse_response(response)
+            if text:
+                texts.append(text)
+            usage_seconds += seconds
+            output_tokens += tokens
+
+        result = stitch_transcripts(texts)
+        tail = result[-80:] if result else ""
+        _logger.info(
+            "OpenRouter STT pcm=%.2fs chunks=%d usage_seconds=%.2fs output_tokens=%d chars=%d tail=%r",
+            pcm_seconds,
+            len(chunks),
+            usage_seconds,
+            output_tokens,
+            len(result),
+            tail,
+        )
+        return result
 
     def _build_payload(self, b64_audio: str) -> dict:
         payload = {
@@ -52,6 +82,7 @@ class OpenRouterWhisperProvider(BaseSTTProvider):
                 "format": "wav",
             },
             "temperature": self.temperature,
+            "max_tokens": _MAX_TOKENS,
         }
         if self.language:
             payload["language"] = self.language
@@ -75,7 +106,7 @@ class OpenRouterWhisperProvider(BaseSTTProvider):
         except httpx.RequestError as exc:
             raise ProviderError(f"OpenRouter STT request failed: {exc}") from exc
 
-    def _parse_response(self, response: httpx.Response) -> str:
+    def _parse_response(self, response: httpx.Response) -> tuple[str, float, int]:
         if response.status_code >= 400:
             try:
                 body = response.json()
@@ -100,4 +131,14 @@ class OpenRouterWhisperProvider(BaseSTTProvider):
                 f"Unexpected OpenRouter STT response structure: {str(body)[:200]}"
             ) from exc
 
-        return finalize_whisper_text(text, self.post_process)
+        usage = body.get("usage") or {}
+        try:
+            seconds = float(usage.get("seconds") or 0.0)
+        except (TypeError, ValueError):
+            seconds = 0.0
+        try:
+            tokens = int(usage.get("output_tokens") or 0)
+        except (TypeError, ValueError):
+            tokens = 0
+
+        return finalize_whisper_text(text, self.post_process), seconds, tokens

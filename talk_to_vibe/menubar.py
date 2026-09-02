@@ -300,11 +300,12 @@ class TalkToVibeMenuBar(rumps.App):
                     self._notify("Clipboard", "Dictation was inserted, but the previous clipboard could not be restored.")
                 self.platform.play_success_sound()
                 self.logger.info(
-                    "Transcribed in %.2fs (%d chars, %s): %s",
+                    "Transcribed in %.2fs (%d chars, %s): %s ... %s",
                     elapsed,
                     len(text),
                     paste_result.method,
                     text[:100],
+                    text[-80:] if len(text) > 100 else "",
                 )
             else:
                 self.logger.info("Empty transcription — no speech detected")

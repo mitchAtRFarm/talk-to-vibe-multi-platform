@@ -38,6 +38,7 @@ class TestBuildPayload:
 
         assert payload["model"] == WHISPER_MODEL
         assert payload["temperature"] == 0
+        assert payload["max_tokens"] == 4096
         assert payload["input_audio"]["format"] == "wav"
         assert payload["input_audio"]["data"] == b64_audio
         assert payload["provider"]["options"]["groq"]["prompt"] == p.hints
@@ -99,8 +100,29 @@ class TestParseResponse:
 
             text = ""
 
-        result = p._parse_response(FakeResp())
+        result, seconds, tokens = p._parse_response(FakeResp())
         assert result == "Hello world"
+        assert seconds == 0.0
+        assert tokens == 0
+
+    def test_usage_fields_parsed(self):
+        p = _make_provider()
+
+        class FakeResp:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "text": "Hello world",
+                    "usage": {"seconds": 9.2, "output_tokens": 30},
+                }
+
+            text = ""
+
+        result, seconds, tokens = p._parse_response(FakeResp())
+        assert result == "Hello world"
+        assert seconds == 9.2
+        assert tokens == 30
 
     def test_post_process_applied(self):
         p = _make_provider(post_process=True)
@@ -113,7 +135,7 @@ class TestParseResponse:
 
             text = ""
 
-        result = p._parse_response(FakeResp())
+        result, _, _ = p._parse_response(FakeResp())
         assert result == "Hello world"
 
     def test_post_process_can_be_disabled(self):
@@ -127,7 +149,7 @@ class TestParseResponse:
 
             text = ""
 
-        result = p._parse_response(FakeResp())
+        result, _, _ = p._parse_response(FakeResp())
         assert result == "Um, hello world"
 
     def test_json_error_response(self):
@@ -209,6 +231,7 @@ class TestTranscribeIntegration:
         assert payload["model"] == WHISPER_MODEL
         assert payload["language"] == "en"
         assert payload["temperature"] == 0.3
+        assert payload["max_tokens"] == 4096
         assert payload["input_audio"]["format"] == "wav"
 
         decoded = base64.b64decode(payload["input_audio"]["data"])
@@ -228,3 +251,31 @@ class TestTranscribeIntegration:
     def test_no_hardcoded_defaults_in_provider(self):
         with pytest.raises(TypeError):
             OpenRouterWhisperProvider(api_key="sk-or-test")
+
+    def test_long_audio_sends_one_request_per_chunk(self, monkeypatch):
+        p = _make_provider(model=GROK_MODEL, post_process=False)
+        audio = _make_audio_data(duration_sec=25.0)
+        calls = []
+
+        class FakeResp:
+            status_code = 200
+
+            def __init__(self, text):
+                self._text = text
+
+            def json(self):
+                return {"text": self._text, "usage": {"seconds": 12.0, "output_tokens": 10}}
+
+            text = ""
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            calls.append(json)
+            n = len(calls)
+            return FakeResp(f"chunk {n} end words")
+
+        import httpx
+
+        monkeypatch.setattr(httpx, "post", fake_post)
+        result = p.transcribe(audio)
+        assert len(calls) == 2
+        assert result == "chunk 1 end words chunk 2 end words"
