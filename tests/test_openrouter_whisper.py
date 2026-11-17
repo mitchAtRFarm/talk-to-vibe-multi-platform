@@ -11,7 +11,7 @@ from talk_to_vibe.providers.openrouter_whisper import (
 
 
 WHISPER_MODEL = "openai/whisper-large-v3-turbo"
-GROK_MODEL = "x-ai/grok-stt-1.0"
+GROK_MODEL = "x-ai/grok-stt-2.0"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1/audio/transcriptions"
 
 

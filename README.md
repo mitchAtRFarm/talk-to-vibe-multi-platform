@@ -60,7 +60,7 @@ TalkToVibe supports purpose-built transcription APIs, configurable multimodal au
 
 | Provider | Type | Default Model | Where It Runs | Notes |
 |----------|------|---------------|---------------|-------|
-| **OpenRouter STT** | Dedicated transcription | `x-ai/grok-stt-1.0` | Cloud | OpenRouter `/audio/transcriptions`; Whisper decoder hints only when the model name contains `whisper` |
+| **OpenRouter STT** | Dedicated transcription | `x-ai/grok-stt-2.0` | Cloud | OpenRouter `/audio/transcriptions`; Whisper decoder hints only when the model name contains `whisper` |
 | **OpenAI** | Whisper transcription | `whisper-1` | Cloud | OpenAI `/audio/transcriptions` |
 | **OpenAI-Compatible** | Whisper transcription | `whisper-1` | Your endpoint | Self-hosted or compatible OpenAI-style API |
 | **OpenRouter** | Multimodal chat + audio | `google/gemini-3.1-flash-lite-preview` | Cloud by default | Uses a configurable `/chat/completions` endpoint with `input_audio`; OpenRouter is just the default wiring |
@@ -296,7 +296,7 @@ mic_preferences:
 providers:
   openrouter_whisper:
     api_key: sk-or-...
-    model: x-ai/grok-stt-1.0
+    model: x-ai/grok-stt-2.0
     base_url: https://openrouter.ai/api/v1/audio/transcriptions
     language: en
     post_process: true

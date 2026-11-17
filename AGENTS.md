@@ -31,7 +31,7 @@ There are two distinct provider types in this codebase. They use different API s
 - **Input**: WAV audio
 - **Output**: Structured transcription response with `.text`
 - **Transport**: `openrouter_whisper` uses direct `httpx` POST to OpenRouter STT; `openai` and `openai_compatible` use the OpenAI SDK transcription client
-- **Default OpenRouter STT model**: `x-ai/grok-stt-1.0`. Whisper decoder hints are sent only when the model name contains `whisper`.
+- **Default OpenRouter STT model**: `x-ai/grok-stt-2.0`. Whisper decoder hints are sent only when the model name contains `whisper`.
 - **When to use**: Pure speech-to-text dictation. Simplest, most reliable for transcription.
 
 ### Multimodal Chat Providers

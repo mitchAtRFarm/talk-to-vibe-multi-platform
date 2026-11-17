@@ -39,7 +39,7 @@ class TestAppConfigDefaults:
 
     def test_default_models_are_in_config(self):
         cfg = AppConfig()
-        assert cfg.providers.openrouter_whisper.model == "x-ai/grok-stt-1.0"
+        assert cfg.providers.openrouter_whisper.model == "x-ai/grok-stt-2.0"
         assert cfg.providers.openai.model == "whisper-1"
         assert cfg.providers.openai_compatible.model == "whisper-1"
         assert cfg.providers.openrouter.model == "google/gemini-3.1-flash-lite-preview"

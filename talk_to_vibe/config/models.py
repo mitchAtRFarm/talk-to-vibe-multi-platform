@@ -9,7 +9,7 @@ OPENROUTER_SERVICE_TIERS = ("", "flex", "priority")
 @dataclass
 class OpenRouterWhisperConfig:
     api_key: str = ""
-    model: str = "x-ai/grok-stt-1.0"
+    model: str = "x-ai/grok-stt-2.0"
     base_url: str = "https://openrouter.ai/api/v1/audio/transcriptions"
     language: str = ""
     hints_file: str = ""
